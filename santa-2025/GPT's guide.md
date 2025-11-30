@@ -1,3 +1,85 @@
+## Santa-2025 Packing Prototype (SAT + PPO)
+
+### 1. Geometry & Collision (C++ via pybind11)
+Files:
+- `geom.hpp`: Header-only convex polygon + SAT utilities.
+- `sat_bindings.cpp`: Pybind11 module exposing:
+  - `Vec2(x,y)`
+  - `ConvexPolygon([...Vec2])`
+  - `make_regular_polygon(sides, radius, center=Vec2(0,0), rotationDeg=0)`
+  - `bounding_square_side([polys])`
+  - `any_overlap([polys])`
+
+Build (inside `santa-2025/`):
+```bash
+pip install pybind11 torch
+python setup.py build_ext --inplace
+python -c "import satgeom; print('satgeom ok')"
+```
+
+### 2. Python Environment (`ppo_env.py`)
+Simplified assumptions:
+- Place `n_trees` regular polygons (same sides & radius).
+- Action: 3 continuous values in [-1,1] mapped to (x,y,deg).
+- Overlap -> reward -10 (retry same index).
+- Valid placement -> reward = -(side^2 / current_count). Smaller bounding square gives less negative (better).
+
+### 3. PPO Agent (`ppo_agent.py`)
+Minimal PPO (learning-oriented, not optimized):
+- ActorCritic with shared MLP, tanh actions.
+- Advantage via GAE (λ=0.95), clipping ratio 0.2.
+- Entropy bonus for exploration.
+- Saves model `ppo_model.pt` after training.
+
+Run training:
+```bash
+python ppo_agent.py
+```
+
+### 4. Next Extensions
+- Variable tree shapes (load polygons from file).
+- Curriculum: start with few trees → increase count.
+- Action masking: disallow positions near existing polygons to reduce invalid trials.
+- Better reward: use delta improvement or normalized vs theoretical packing density.
+- Parallel env sampling to speed up PPO.
+
+### 5. Exporting Submission CSV (Concept)
+After a trained policy produces placements:
+1. For each configuration id + tree index produce `id_i,x,y,deg`.
+2. Convert numeric to string prefixed with `s` (e.g. `s0.1234`).
+3. Ensure no overlaps via `any_overlap` before writing.
+Example stub:
+```python
+def save_submission(filename, placements):
+    with open(filename,'w') as f:
+        f.write('id,x,y,deg\n')
+        for pid,(x,y,deg) in placements:
+            f.write(f"{pid},s{x},s{y},s{deg}\n")
+```
+
+### 6. Common Build Issues
+- Missing `pybind11`: install it (`pip install pybind11`).
+- Compiler errors on Windows: ensure a C++17 capable compiler (MSVC or WSL g++). Under WSL this repo path works with g++.
+- `ImportError: satgeom`: ensure build placed `satgeom.*.so` in `santa-2025/` or `PYTHONPATH` includes folder.
+
+### 7. Reasoning Trade-offs
+This prototype favors *clarity over performance*. SAT calls scale O(N^2) with polygon count per step (acceptable for ≤200). For speed later:
+- Spatial index (uniform grid / BVH)
+- Batch overlap checks in C++ returning vector<bool>
+- Replace naive random exploration with learned action prior.
+
+### 8. Quick Clean Commands
+```bash
+find . -name "*.so" -delete  # remove built extension
+python setup.py build_ext --inplace
+```
+
+### 9. FAQ
+Q: Why negative rewards? → PPO maximizes expected return; negative is fine if "less negative" means better packing.
+Q: Why tanh actions? → Natural bounded output; simple scaling to coordinate ranges.
+Q: Could we use discrete grid? → Yes; replace actor with categorical policy; easier collision validity but less precision.
+Q: Concave trees? → Need decomposition (already in original collision file); expose concave later.
+
 Great — since you want **learning experience**, **mathematical clarity**, and **a beginner-friendly but meaningful ML path**, AND you **don’t have training data**, we should pick methods that:
 
 * **Teach you actual computational geometry + optimization**
