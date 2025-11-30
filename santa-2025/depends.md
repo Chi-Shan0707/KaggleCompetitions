@@ -1,16 +1,91 @@
-I'll examine the project folders and list all dependencies for both Python and C++. 
+# Dependencies (Santa-2025) / 依赖清单
 
-Read [](file:///mnt/d/CS/Kaggle/santa-2025/setup.py)
+English first, then Chinese below each item. 先英文后中文。
 
-Read [](file:///mnt/d/CS/Kaggle/santa-2025/ppo_agent.py)
+## Python Packages / Python 包
+- PyTorch (`torch`): PPO training.
+  - 用途：PPO训练。
+- pybind11: C++/Python bindings for `satgeom`.
+  - 用途：C++/Python绑定。
+- setuptools: Build the extension.
+  - 用途：构建扩展。
+- Optional: numpy, matplotlib, tensorboard.
+  - 可选：数值与可视化。
 
-Read [](file:///mnt/d/CS/Kaggle/santa-2025/ppo_env.py)
+## C++ Toolchain / C++ 工具链
+- C++17-capable compiler (gcc/clang).
+  - 需要支持 C++17 的编译器。
+- Build essentials (Linux): `build-essential`.
+  - Linux 需安装基本编译工具。
 
-Read [](file:///mnt/d/CS/Kaggle/santa-2025/geom.hpp#1-1), lines 1 to 51
+## Conda Installation / Conda 安装
 
-Read [](file:///mnt/d/CS/Kaggle/santa-2025/sat_bindings.cpp)
+```bash
+# Create and activate env / 创建并激活环境
+conda create -n santa_env python=3.10 -y
+conda activate santa_env
 
-Searched for files matching `**/requirements.txt`, no matches
+# Core Python deps via conda-forge / 通过 conda-forge 安装核心依赖
+conda install -y -c conda-forge pybind11 setuptools
+
+# PyTorch (CUDA optional) / 安装 PyTorch（可选CUDA）
+# CPU only:
+conda install -y -c pytorch pytorch
+# GPU 安装（RTX 5060, SM_120，CUDA 12.8 提示）
+# 说明：PyTorch 官方轮子通常按 cu121/cu124/cu126 等标签提供，目前未提供 "cu128"。
+# 请选择与你的驱动兼容的最近版本（如 CUDA 12.1 或 12.6）。
+# Conda 示例（优先）：
+conda install -y -c pytorch -c nvidia pytorch cuda=12.1
+# 或者（如环境提供）：
+# conda install -y -c pytorch -c nvidia pytorch cuda=12.6
+
+# Pip 示例（当 conda 无法满足时）：
+# 根据 PyTorch 官方下载页选择索引 URL，例如 CUDA 12.1：
+# pip install --index-url https://download.pytorch.org/whl/cu121 torch torchvision torchaudio
+# 如未来提供 cu128（CUDA 12.8），请改用对应索引 URL。
+```
+> github上的方案<br>
+*RTX 5060 成功运行 PyTorch Nightly + CUDA 12.9 的完整配置教程*
+https://github.com/Scarfy-sysu/rtx5060-pytorch-cuda129
+
+# Optional extras / 可选依赖
+conda install -y -c conda-forge numpy matplotlib tensorboard
+```
+
+## When Conda Is Not Preferred / Conda 非首选时
+- You can use pip for Python deps. 可用 pip 安装：
+
+```bash
+pip install pybind11 setuptools torch
+pip install numpy matplotlib tensorboard  # optional
+```
+
+## Build Extension / 构建扩展
+```bash
+# From repo root / 在仓库根目录
+pip install -e santa-2025
+```
+
+## Linux Compiler Setup / Linux 编译器安装
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential
+# gcc --version should show >= 7 (C++17) / 至少支持 C++17
+```
+
+## Verify / 验证
+```bash
+python -c "import satgeom; print('satgeom OK')"
+python -c "import torch; print('torch', __import__('torch').__version__)"
+# Verify GPU / 验证 GPU
+python - <<'PY'
+import torch
+print('CUDA available:', torch.cuda.is_available())
+if torch.cuda.is_available():
+  print('GPU name:', torch.cuda.get_device_name(0))
+  print('CUDA runtime version:', torch.version.cuda)
+PY
+```Searched for files matching `**/requirements.txt`, no matches
 
 Searched for files matching `**/CMakeLists.txt`, no matches
 
