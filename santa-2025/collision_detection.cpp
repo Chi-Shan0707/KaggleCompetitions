@@ -29,13 +29,22 @@ struct Vec2 {
 };
 
 template <typename T>
-inline T dot(const Vec2<T>& a, const Vec2<T>& b) { return a.x * b.x + a.y * b.y; }
+inline T dot(const Vec2<T>& a, const Vec2<T>& b)
+{ 
+	return a.x * b.x + a.y * b.y; 
+}
 
 template <typename T>
-inline T cross(const Vec2<T>& a, const Vec2<T>& b) { return a.x * b.y - a.y * b.x; }
+inline T cross(const Vec2<T>& a, const Vec2<T>& b) 
+{ 
+	return a.x * b.y - a.y * b.x;
+}
 
 template <typename T>
-inline Vec2<T> perp(const Vec2<T>& v) { return Vec2<T>{-v.y, v.x}; }
+inline Vec2<T> perp(const Vec2<T>& v) 
+{
+	 return Vec2<T>{-v.y, v.x}; 
+}
 // English: perp returns a 2D perpendicular vector, used as SAT axis.
 // 中文：perp 返回二维向量的一个法向（垂直）向量，用于构造分离轴。
 
@@ -88,15 +97,19 @@ public:
 
 	void rotateAround(T deg, const Vec2<T>& origin) override {
 		// 先平移到以 origin 为中心的坐标系，旋转后再平移回去
-		for (auto& p : pts) {
-			auto rel = p - origin;
+		for (auto& p:pts)
+		{
+			auto rel=p-origin;
 			rel = rotate(rel, deg);
-			p = origin + rel;
+		//relative 相对的
+			p = origin+ rel;
 		}
 	}
 
 	// Project polygon on axis and test overlap
-	static std::pair<T, T> projectOnAxis(const std::vector<Vec2<T>>& v, const Vec2<T>& axis) {
+	static std::pair<T, T> projectOnAxis(const std::vector<Vec2<T>>& v, const Vec2<T>& axis) 
+	{
+//std::vector<Vec2<T>>& v,一个存二维向量的数组
 		// 将所有顶点投影到给定轴上，取最小/最大投影值
 		T minP = dot(v[0], axis), maxP = minP;
 		for (size_t i = 1; i < v.size(); ++i) {
