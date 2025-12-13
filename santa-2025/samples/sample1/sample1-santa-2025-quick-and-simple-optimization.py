@@ -189,8 +189,8 @@ def get_bbox_touching_tree_indices(tree_list: list[ChristmasTree]) -> list[int]:
 
 
 if __name__ == '__main__':
-    # Load current best solution
-    current_solution_path = list(Path('/kaggle/input/').glob('*/*.csv'))[1]
+    # Load current best solution from dedicated samples folder
+    current_solution_path = Path('/mnt/d/CS/Kaggle/santa-2025/samples/sample1/input/sample_submission.csv')
     dict_of_tree_list, dict_of_side_length = parse_csv(current_solution_path)
 
     # Calculate current total score
@@ -258,4 +258,5 @@ if __name__ == '__main__':
                 'deg': f's{tree.angle}'
             })
     tree_data = pd.DataFrame(tree_data)
-    tree_data.to_csv('results.csv', index=False)
+    output_path = Path('/mnt/d/CS/Kaggle/santa-2025/samples/sample1/output/results.csv')
+    tree_data.to_csv(output_path, index=False)

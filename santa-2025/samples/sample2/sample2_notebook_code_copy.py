@@ -122,7 +122,7 @@ def has_overlap(trees):
     return False
 
 
-def main(input_csv: str = '/kaggle/input/my-santa-2025-optimized-v1/my_optimized_submission.csv.csv'):
+def main(input_csv: str = '/mnt/d/CS/Kaggle/santa-2025/samples/sample2/input/sample_submission.csv'):
     # Load optimized submission
     df = pd.read_csv(input_csv)
 
@@ -186,11 +186,11 @@ def main(input_csv: str = '/kaggle/input/my-santa-2025-optimized-v1/my_optimized
     ax2.set_ylabel('freq')
 
     plt.tight_layout()
-    plt.savefig('sample2_dashboard.png', bbox_inches='tight', facecolor='white')
+    plt.savefig('/mnt/d/CS/Kaggle/santa-2025/samples/sample2/output/sample2_dashboard.png', bbox_inches='tight', facecolor='white')
 
     # Submission
     if len(failed_configs) == 0:
-        df[['id', 'x', 'y', 'deg']].to_csv('submission.csv', index=False)
+        df[['id', 'x', 'y', 'deg']].to_csv('/mnt/d/CS/Kaggle/santa-2025/samples/sample2/output/submission.csv', index=False)
     else:
         print(f'Overlaps found in {failed_configs}; fix before submission.')
 
