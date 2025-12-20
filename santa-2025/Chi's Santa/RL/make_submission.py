@@ -18,6 +18,7 @@ import random
 from typing import List, Dict, Tuple
 
 import math
+import torch
 
 # Flexible imports for both package and script execution
 CURRENT_DIR = os.path.dirname(__file__)
@@ -67,6 +68,47 @@ def policy_sample_action(W, b, log_std, obs: List[float]):
         raw = mu + std * random.gauss(0.0, 1.0)
         act.append(math.tanh(raw))
     return act
+
+
+def _pad_obs(obs: List[float], expected_dim: int) -> List[float]:
+    if len(obs) >= expected_dim:
+        return obs[:expected_dim]
+    return obs + [0.0] * (expected_dim - len(obs))
+
+
+def policy_mean_action_torch(state_dict_path: str, obs: List[float], device: torch.device):
+    # load state_dict and run deterministic forward on device
+    sd = torch.load(state_dict_path, map_location=device)
+    w = sd["net.weight"]
+    act_dim, obs_dim = w.shape
+    from reinforce_agent import GaussianLinearPolicy  # local import
+    model = GaussianLinearPolicy(obs_dim, act_dim)
+    model.load_state_dict(sd)
+    model.to(device)
+    o = _pad_obs(obs, obs_dim)
+    xt = torch.tensor(o, dtype=torch.float32, device=device)
+    with torch.no_grad():
+        mu = model.net(xt)
+        act = torch.tanh(mu)
+    return act.cpu().tolist()
+
+
+def policy_sample_action_torch(state_dict_path: str, obs: List[float], device: torch.device):
+    sd = torch.load(state_dict_path, map_location=device)
+    w = sd["net.weight"]
+    act_dim, obs_dim = w.shape
+    from reinforce_agent import GaussianLinearPolicy  # local import
+    model = GaussianLinearPolicy(obs_dim, act_dim)
+    model.load_state_dict(sd)
+    model.to(device)
+    o = _pad_obs(obs, obs_dim)
+    xt = torch.tensor(o, dtype=torch.float32, device=device)
+    with torch.no_grad():
+        mu = model.net(xt)
+        std = torch.exp(model.log_std)
+        raw = mu + std * torch.randn_like(mu)
+        act = torch.tanh(raw)
+    return act.cpu().tolist()
 
 
 def try_step_with_fallback(env: SimplePackingEnv, W, b, obs: List[float], max_tries: int = 10,
@@ -149,12 +191,35 @@ def write_submission(pi_path: str, out_csv: str, input_csv: str = "", n_max: int
     # Optional RNG seed for reproducibility/diversity
     if seed is not None:
         random.seed(seed)
-    # Load policy params
-    with open(pi_path, "r") as f:
-        data = json.load(f)
-    W = data["W"]
-    b = data["b"]
-    log_std = data.get("log_std", [0.0, 0.0, 0.0])
+    # Resolve policy path relative to this script
+    if not os.path.isabs(pi_path):
+        pi_path = os.path.join(CURRENT_DIR, pi_path)
+
+    # Prefer a .pt state_dict if present (and torch available), else load JSON params
+    pt_candidate = None
+    if pi_path.endswith('.json'):
+        pt_candidate = pi_path[:-5] + '.pt'
+    else:
+        pt_candidate = pi_path + '.pt'
+
+    use_torch_pt = False
+    if os.path.exists(pt_candidate):
+        try:
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            # quick check load
+            _ = torch.load(pt_candidate, map_location=device)
+            use_torch_pt = True
+            pt_path = pt_candidate
+        except Exception:
+            use_torch_pt = False
+
+    if not use_torch_pt:
+        # Load JSON fallback
+        with open(pi_path, "r") as f:
+            data = json.load(f)
+        W = data["W"]
+        b = data["b"]
+        log_std = data.get("log_std", [0.0, 0.0, 0.0])
 
     seeds = parse_input_csv(input_csv) if input_csv else {}
 
@@ -168,11 +233,18 @@ def write_submission(pi_path: str, out_csv: str, input_csv: str = "", n_max: int
         w = csv.writer(f)
         w.writerow(["id", "x", "y", "deg"])
 
-        # Choose action function per mode
-        if mode == "sample":
-            act_fn = lambda o: policy_sample_action(W, b, log_std, o)
+        # Choose action function per mode and available policy backend
+        if use_torch_pt:
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            if mode == "sample":
+                act_fn = lambda o: policy_sample_action_torch(pt_path, o, device)
+            else:
+                act_fn = lambda o: policy_mean_action_torch(pt_path, o, device)
         else:
-            act_fn = lambda o: policy_mean_action(W, b, o)
+            if mode == "sample":
+                act_fn = lambda o: policy_sample_action(W, b, log_std, o)
+            else:
+                act_fn = lambda o: policy_mean_action(W, b, o)
 
         for n in range(1, n_max + 1):
             env = SimplePackingEnv(SimpleEnvConfig(n_trees=n, max_coord=50.0, scale=1.0))

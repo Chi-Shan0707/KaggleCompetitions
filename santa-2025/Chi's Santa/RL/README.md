@@ -42,8 +42,8 @@ Make it different next time · 让结果“不同”起来
 	- English:
 		```bash
 		# Retrain with a different seed
-		python "santa-2025/Chi's Santa/RL/train_basic_rl.py" --n_trees 10 --epochs 5 --seed 123 \
-			--save_path "santa-2025/Chi's Santa/RL/reinforce_policy_seed123.json"
+		python "santa-2025/Chi's Santa/RL/train_basic_rl.py" --n_trees 12 --epochs 500 --seed 123 \
+			--save_path "santa-2025/Chi's Santa/RL/reinforce_policy.json"
 
 		# Or sample during submission (stochastic) with a chosen RNG seed
 		python "santa-2025/Chi's Santa/RL/make_submission.py" \
@@ -75,3 +75,11 @@ Submission Rules · 提交规则
 Notes · 说明
 - Actions are 3D continuous: (x, y, deg) squashed by tanh to [-1,1], mapped to coordinates and rotation.
 - This baseline is intentionally simple; for stronger results, consider improved exploration, curriculum, or a richer policy.
+
+
+```
+python make_submission.py \
+--policy "reinforce_policy.json" \
+--input "input.csv" \
+--out "submission.csv"
+```

@@ -23,7 +23,9 @@ import math
 import random
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
-
+import torch
+import torch.nn as nn
+import torch.optim as optim
 
 @dataclass
 class ReinforceConfig:
@@ -35,105 +37,60 @@ class ReinforceConfig:
     init_std: float = 0.5
 
 
-class GaussianLinearPolicy:
-    """
-    English: Minimal Gaussian policy, tanh-squashed to [-1,1]. Stdlib only.
+class GaussianLinearPolicy(nn.Module):
+    """Minimal PyTorch Gaussian linear policy with tanh squashing.
 
-    中文：最小高斯策略，tanh 压缩到 [-1,1]，仅用标准库实现。
-
-    How the policy maps observations to actions (plain language):
-    - Compute mean action mu = W x + b (a simple linear mapping).
-    - Add Gaussian noise (std fixed) to mu to produce a raw action (exploration).
-    - Squash the raw action with tanh so outputs lie in [-1,1].
-
-    策略如何将观测映射为动作（通俗）：
-    - 计算动作为 mu = W x + b（线性映射）。
-    - 对 mu 加高斯噪声（固定方差）得到 raw（引入探索）。
-    - 用 tanh 压缩 raw，使动作落在 [-1,1]。
+    - mu = Linear(obs)
+    - raw ~ N(mu, std^2)
+    - act = tanh(raw)
     """
 
     def __init__(self, obs_dim: int, act_dim: int, init_std: float = 0.5, lr: float = 1e-2):
+        super().__init__()
         self.obs_dim = obs_dim
         self.act_dim = act_dim
-        # Initialize small random weights
-        self.W = [[random.uniform(-0.1, 0.1) for _ in range(obs_dim)] for _ in range(act_dim)]
-        self.b = [0.0 for _ in range(act_dim)]
-        self.log_std = [math.log(init_std) for _ in range(act_dim)]
+        self.net = nn.Linear(obs_dim, act_dim)
+        # initialize weights similar to original random.uniform(-0.1,0.1)
+        nn.init.uniform_(self.net.weight, -0.1, 0.1)
+        nn.init.constant_(self.net.bias, 0.0)
+        # log_std as a learnable parameter (kept small by default)
+        self.log_std = nn.Parameter(torch.ones(act_dim) * math.log(init_std))
         self.lr = lr
 
     def params(self) -> Dict[str, List]:
-        """English: Export parameters as plain lists for JSON saving.
-
-        中文：将参数导出为普通列表，便于保存为 JSON。
-        """
-        return {"W": self.W, "b": self.b, "log_std": self.log_std}
-
-    def _dot(self, a: List[float], b: List[float]) -> float:
-        return sum(x*y for x, y in zip(a, b))
+        """Export parameters as plain lists for JSON saving."""
+        W = self.net.weight.detach().cpu().tolist()
+        b = self.net.bias.detach().cpu().tolist()
+        log_std = self.log_std.detach().cpu().tolist()
+        return {"W": W, "b": b, "log_std": log_std}
 
     def mean(self, obs: List[float]) -> List[float]:
-        """
-        English: Compute action mean mu = W x + b.
-
-        中文：计算动作均值 mu = W x + b。
-        - This produces the 'typical' action for the current observation before adding noise.
-        - 该函数在加入噪声前给出当前观测下的“典型”动作。
-        """
-        return [self._dot(w_row, obs) + self.b[j] for j, w_row in enumerate(self.W)]
+        device = next(self.parameters()).device
+        x = torch.tensor(obs, dtype=torch.float32, device=device)
+        mu = self.net(x)
+        return mu.detach().cpu().tolist()
 
     def sample(self, obs: List[float]) -> Tuple[List[float], List[float], List[float]]:
-        """
-        English: Sample raw ~ N(mu, std^2) then act = tanh(raw).
-
-        中文：先采样 raw ~ N(mu, std^2)，再取 act = tanh(raw)。
-        - Returns: (act, raw, mu) where raw is pre-tanh, mu is deterministic mean.
-        - raw is used in learning because tanh is non-linear and we compute gradients w.r.t. the Gaussian.
-        """
-        mu = self.mean(obs)
-        std = [math.exp(ls) for ls in self.log_std]
-        raw = [mu[j] + std[j] * random.gauss(0.0, 1.0) for j in range(self.act_dim)]
-        act = [math.tanh(v) for v in raw]
-        return act, raw, mu
+        device = next(self.parameters()).device
+        x = torch.tensor(obs, dtype=torch.float32, device=device)
+        mu = self.net(x)
+        std = torch.exp(self.log_std)
+        raw = mu + std * torch.randn_like(mu)
+        act = torch.tanh(raw)
+        return act.detach().cpu().tolist(), raw.detach().cpu().tolist(), mu.detach().cpu().tolist()
 
     def log_prob_raw(self, raw: List[float], mu: List[float]) -> float:
-        """
-        English: Log-prob of raw under diagonal Gaussian N(mu, std^2).
+        device = next(self.parameters()).device
+        raw_t = torch.tensor(raw, dtype=torch.float32, device=device)
+        mu_t = torch.tensor(mu, dtype=torch.float32, device=device)
+        std = torch.exp(self.log_std)
+        var = std * std
+        # gaussian log prob for diagonal covariance
+        out = -0.5 * (((raw_t - mu_t) ** 2) / var + 2 * self.log_std + math.log(2 * math.pi))
+        return float(out.sum().detach().cpu().item())
 
-        中文：对角高斯 N(mu, std^2) 下 raw 的对数概率。
-        - This is used to evaluate how (a) likely an observed raw sample was under the current policy.
-        - 在学习时用来评估在当前策略下采样到该 raw 的可能性。
-        """
-        std = [math.exp(ls) for ls in self.log_std]
-        out = 0.0
-        for j in range(self.act_dim):
-            var = std[j] * std[j]
-            out += -0.5 * (((raw[j] - mu[j]) ** 2) / var + 2 * self.log_std[j] + math.log(2 * math.pi))
-        return out
-
-    def grad_logprob_wrt_mu(self, raw: List[float], mu: List[float]) -> List[float]:
-        """
-        English: d log N(raw; mu, std^2) / d mu = (raw - mu) / std^2.
-
-        中文：d log N(raw; mu, std^2) / d mu = (raw - mu) / std^2。
-        - This gradient tells how to change mu to increase the log-probability of the sampled raw.
-        - 该梯度表示如何改变 mu 以提高采样到 raw 的对数概率。
-        """
-        std = [math.exp(ls) for ls in self.log_std]
-        return [ (raw[j] - mu[j]) / (std[j]*std[j]) for j in range(self.act_dim) ]
-
-    def update(self, grads: Dict[str, List[List[float]]] ):
-        """
-        English: Gradient ascent on W and b.
-
-        中文：对 W 与 b 做梯度上升更新。
-        - Apply a simple gradient ascent step: param += lr * grad.
-        - 直接使用梯度上升更新参数：param += lr * grad。
-        """
-        # Gradient ascent
-        for j in range(self.act_dim):
-            for i in range(self.obs_dim):
-                self.W[j][i] += self.lr * grads["W"][j][i]
-            self.b[j] += self.lr * grads["b"][j]
+    def to_device(self, device: torch.device):
+        self.to(device)
 
 
 class ReinforceAgent:
@@ -145,6 +102,7 @@ class ReinforceAgent:
     def __init__(self, obs_dim: int, act_dim: int, cfg: ReinforceConfig):
         self.cfg = cfg
         self.pi = GaussianLinearPolicy(obs_dim, act_dim, init_std=cfg.init_std, lr=cfg.lr)
+        self.optimizer = optim.Adam(self.pi.parameters(), lr=cfg.lr)
 
     def select_action(self, obs: List[float]):
         """
@@ -196,7 +154,7 @@ class ReinforceAgent:
         - 为了稳定，只固定 std，不更新它；这里只更新 W 和 b。
         - 函数返回一个梯度范数的标量，便于日志记录。
         """
-        # Compute episode returns and policy gradients (score function) for W,b only (keep std fixed for stability)
+        # Compute episode returns (discounted) - same as before
         all_returns = []
         for traj in trajectories:
             rews = traj["rew"]
@@ -208,33 +166,41 @@ class ReinforceAgent:
             ret.reverse()
             traj["ret"] = ret
             all_returns.extend(ret)
-
         # Normalize returns as baseline
         mean_R = sum(all_returns)/max(1, len(all_returns))
         var_R = sum((r-mean_R)**2 for r in all_returns)/max(1, len(all_returns))
         std_R = math.sqrt(var_R + 1e-8)
 
-        # Initialize grads
-        W_grad = [[0.0 for _ in range(self.pi.obs_dim)] for _ in range(self.pi.act_dim)]
-        b_grad = [0.0 for _ in range(self.pi.act_dim)]
-
+        # Build loss using torch (negative log-prob weighted by standardized returns)
+        device = next(self.pi.parameters()).device
+        loss = torch.tensor(0.0, dtype=torch.float32, device=device)
         idx = 0
         for traj in trajectories:
             for t in range(len(traj["obs"])):
                 obs = traj["obs"][t]
-                raw = traj["raw"][t]
-                mu = traj["mu"][t]
-                g_mu = self.pi.grad_logprob_wrt_mu(raw, mu)  # d logp / d mu
-                # Chain rule: d mu / d W = obs, d mu / d b = 1
+                obs_t = torch.tensor(obs, dtype=torch.float32, device=device)
+                # recompute mu from current policy network to get proper gradients
+                mu_t = self.pi.net(obs_t)
+                raw_t = torch.tensor(traj["raw"][t], dtype=torch.float32, device=device)
+                std = torch.exp(self.pi.log_std)
+                var = std * std
+                out = -0.5 * (((raw_t - mu_t) ** 2) / var + 2 * self.pi.log_std + math.log(2 * math.pi))
+                logp = out.sum()
                 Rn = (all_returns[idx] - mean_R) / std_R
-                for j in range(self.pi.act_dim):
-                    for i in range(self.pi.obs_dim):
-                        W_grad[j][i] += g_mu[j] * obs[i] * Rn
-                    b_grad[j] += g_mu[j] * Rn
+                Rn_t = torch.tensor(Rn, dtype=torch.float32, device=device)
+                loss = loss + (-logp * Rn_t)
                 idx += 1
 
-        self.pi.update({"W": W_grad, "b": b_grad})
-        # Return simple scalar for logging (gradient norm)
-        gn = sum(abs(x) for row in W_grad for x in row) + sum(abs(x) for x in b_grad)
+        if idx > 0:
+            loss = loss / float(idx)
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        # compute simple grad-norm for logging
+        gn = 0.0
+        for p in self.pi.parameters():
+            if p.grad is not None:
+                gn += float(p.grad.abs().sum().detach().cpu().item())
+        self.optimizer.step()
         return float(gn)
 

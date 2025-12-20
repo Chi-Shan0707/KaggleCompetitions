@@ -65,7 +65,7 @@ def build_christmas_tree_polygon(cx: float, cy: float, angle_deg: float, scale: 
 @dataclass
 class SimpleEnvConfig:
     n_trees: int = 10
-    max_coord: float = 50.0
+    max_coord: float = 18.0
     scale: float = 1.0
     overlap_eps: float = 1e-9
 
