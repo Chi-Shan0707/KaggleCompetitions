@@ -23,6 +23,15 @@ import statistics
 single_tree_size = [1.0, 0.7, 1.0]
 # max_dim , width , height
 # 初始化全局 result 字典，result[0] 表示空状态
+
+base_jitter =  0.1
+jitter_mu = 0.1  # initial mean multiplier (relative to single tree size)
+jitter_sigma = 0.05  # initial std dev
+
+
+mu_boundary = 0.5    # 选点位置的均值（0~1）
+sigma_boundary = 0.2 # 选点位置的标准差
+
 result = {}
 
 def tree_polygon(x, y, angle_deg):
@@ -82,77 +91,61 @@ def attempt_pack_cem(n, side, iterations, population, elite_frac=0.10, max_attem
     # Keep the original placement logic unchanged; CEM searches over the
     # jitter multiplier used when sampling just-off-the-boundary points.
     # 我们只对外部扰动（jitter）倍数做CEM搜索。
-    base_jitter = single_tree_size[0] * 0.1
-    mu = 0.1  # initial mean multiplier (relative to single tree size)
-    sigma = 0.05  # initial std dev
-
+    
     n_elite = max(1, int(population * elite_frac))
 
+    global jitter_mu , jitter_sigma , mu_boundary , sigma_boundary 
+
     if prev_result != None :
-        if side < result[len(list ( prev_centers ))][0] * 0.95:
-            return False, ([], [], [])
-        elif side < result[len(list ( prev_centers ))][0] :
+        if side < result[len(list ( prev_centers ))][0] :
             for p in prev_placed_polys:
                     if not fits_in_box(p, side):
                         return False, ([], [], [])
     # 依据已算得的结果进行快速判断 prev_result 是否放的进当前盒子
-
+    
     for it in range(iterations):
-        population_results = []  # list of tuples (reward, placed, centers, angles, placed_polys, jitter_mult)
+        population_results = []  # list of tuples (reward, placed, centers, angles, placed_polys, jitter_mult , boundary_ratio)
 
         # sample a population of jitter multipliers and evaluate each using the
         # original placement core logic (kept intact). 保持原始放置逻辑不变。
         for s_idx in range(population):
             # sample jitter multiplier for this candidate
-            jitter_mult = random.gauss(mu, sigma)
+            jitter_mult = random.gauss(jitter_mu, jitter_sigma)
             if jitter_mult < 0.0:
                 jitter_mult = abs(jitter_mult)
-            # 高斯采样一个非负的抖动倍数
 
-            # initialize placement state; possibly reuse previous successful
-            # placement (e.g., n-1 trees) when compatible. If reused, we start
-            # placing from the next tree instead of starting from scratch.
-            # 初始化放置状态；当兼容时复用之前的成功放置（例如 n-1 棵树）。
-            # 如果复用，则从下一棵树开始放置，而不是从头开始。
-            # centers = []
-            # angles = []
-            # placed_polys = []  # shapely polygons in scaled coords for collision checks
-            # placed = 0
-            # if prev_centers and prev_placed_polys:
-            #     compatible = True
-            #     for p in prev_placed_polys:
-            #         if not fits_in_box(p, side):
-            #             compatible = False
-            #             break
-            #     # only reuse if previous placement fits current side and had
-            #     # fewer than n trees (so we need to add more)
-            #     # 仅当之前的放置适合当前方盒并且树数少于 n 时才复用
-            #     if compatible and len(prev_centers) < n:
-            #         centers = list(prev_centers)
-            #         angles = list(prev_angles)
-            #         placed_polys = list(prev_placed_polys)
-            #         placed = len(centers)
-            centers = list ( prev_centers )
-            angles  = list ( prev_angles )
-            placed_polys = list ( prev_placed_polys )
-            placed = len( centers )
-            for i in range(n):
+           
+
+            boundary_ratio = random.gauss(mu_boundary, sigma_boundary)
+            boundary_ratio = max(0.0, min(1.0, boundary_ratio))  # 限制在0~1之间
+
+            # start placement attempt
+            centers = list(prev_centers) if prev_centers else []
+            angles = list(prev_angles) if prev_angles else []
+            placed_polys = list(prev_placed_polys) if prev_placed_polys else []
+            placed = len(centers)
+
+            max_x = 0
+            max_y = 0
+            # iterate exactly for remaining trees we need to place
+            for i in range(n - len(centers)):
                 placed_ok = False
                 for attempt in range(max_attempts_per_tree):
-                    # decide perimeter (75%) or random (25%) — core rule preserved
-                    if placed_polys and random.random() < 0.75:
+                    # with 80% probability sample near the perimeter of the
+                    # union of placed polygons; otherwise sample uniformly.
+                    if placed_polys and random.random() < 0.80:
                         union = unary_union(placed_polys)
                         boundary = union.boundary
                         if boundary.length <= 0:
                             x = random.random() * side
                             y = random.random() * side
                         else:
-                            d = random.random() * boundary.length
+                            d = boundary_ratio * boundary.length
                             pt = boundary.interpolate(d)
                             x0 = pt.x / float(scale_factor)
                             y0 = pt.y / float(scale_factor)
                             # outward jitter uses the sampled jitter_mult
-                            jitter = single_tree_size[0] * jitter_mult
+                            jitter = 1.0 * jitter_mult
                             theta = random.random() * 2.0 * math.pi
                             dx = math.cos(theta) * jitter * random.random()
                             dy = math.sin(theta) * jitter * random.random()
@@ -173,6 +166,8 @@ def attempt_pack_cem(n, side, iterations, population, elite_frac=0.10, max_attem
                     angles.append(a)
                     placed += 1
                     placed_ok = True
+                    max_x = max(x, max_x)
+                    max_y = max(y, max_y)
                     break
                 if not placed_ok:
                     break
@@ -180,17 +175,17 @@ def attempt_pack_cem(n, side, iterations, population, elite_frac=0.10, max_attem
             # Reward: consider both number placed and approximate box size
             # 奖励同时考虑放置数量和方箱尺寸（越小越好）。
             # normalize side by expected minimal length ~ single_size*sqrt(n)
-            single_size = single_tree_size[0]
-            approx_scale = side / (single_size * math.sqrt(n))
-            # reward = placed trees minus a penalty proportional to approx_scale
-            reward = placed - approx_scale
 
-            population_results.append((reward, placed, centers, angles, placed_polys, jitter_mult))
+            if placed ==n :
+               print("log:",n,side)
+            # reward = placed trees minus a penalty proportional to approx_scale
+            reward = placed - (max_x + max_y ) * 0.5
+            population_results.append((reward, placed, centers, angles, placed_polys, jitter_mult, boundary_ratio))
 
             # track global best like before
             if placed == n:
                 return True, (centers, angles, placed_polys)
-            # 因为找到解，就不是很有必要
+            # 我们只是证明这个给定的side是可行的，并返回可以一种可行的方案，不需要继续优化
 
         # sort by reward and select elites
         population_results.sort(key=lambda x: x[0], reverse=True)
@@ -198,22 +193,32 @@ def attempt_pack_cem(n, side, iterations, population, elite_frac=0.10, max_attem
 
         # update mu and sigma based on elites (CEM update)
         elite_jitters = [e[5] for e in elites]
+        elite_boundary_ratios = [e[6] for e in elites]
         # use statistics module; guard against zero variance
         try:
             new_mu = statistics.mean(elite_jitters)
             new_sigma = statistics.pstdev(elite_jitters)
         except Exception:
-            new_mu = mu
-            new_sigma = sigma
+            new_mu = jitter_mu
+            new_sigma = jitter_sigma
 
         # small smoothing to avoid collapse
-        mu = 0.8 * mu + 0.2 * new_mu
-        sigma = max(1e-3, 0.8 * sigma + 0.2 * new_sigma)
+        jitter_mu = 0.8 * jitter_mu + 0.2 * new_mu
+        jitter_sigma = max(1e-3, 0.8 * jitter_sigma + 0.2 * new_sigma)
+
+
+        try:
+            new_mu_boundary = statistics.mean(elite_boundary_ratios)
+            new_sigma_boundary = statistics.pstdev(elite_boundary_ratios) if len(elite_boundary_ratios) > 1 else sigma_boundary
+        except Exception:
+            new_mu_boundary, new_sigma_boundary = mu_boundary, sigma_boundary
+        mu_boundary = 0.8 * mu_boundary + 0.2 * new_mu_boundary
+        sigma_boundary = max(1e-3, 0.8 * sigma_boundary + 0.2 * new_sigma_boundary)
 
     return False,([], [], [])
 
 
-def find_min_side_for_n(n, timeout=10, result_dict=None):
+def find_min_side_for_n(n, timeout=30, result_dict=None):
     # Binary search for minimal side that fits n trees using the CEM packer.
     # This version will attempt fallback starts based on entries in result_dict
     # (i.e., result_dict[k] holds a previously successful placement for k trees).
@@ -222,25 +227,25 @@ def find_min_side_for_n(n, timeout=10, result_dict=None):
         result_dict = {}
 
     # Start bounds and hyperparams (kept as original heuristics)
-    iterations = 18
-    population = 52
-    max_attempts = 9
+    iterations = 20
+    population = 50
+    max_attempts = 10
 
     max_dim, w, h = single_tree_size
-    lo = max ( max_dim * math.sqrt(n) * 0.7 , result_dict.get(n-1, (0.0, [], [], []))[0] * 0.94  if n-1 in result_dict else 0.0 )
-    hi = max ( max_dim * math.sqrt(n) * 1.2 , result_dict.get(n-1, (0.0, [], [], []))[0] * 1.18  if n-1 in result_dict else 0.0 )
+    lo = max ( max_dim * math.sqrt(n) * 0.7 , result_dict.get(n-1, (0.0, [], [], []))[0] * 0.95  if n-1 in result_dict else 0.0 )
+    hi = max ( max_dim * math.sqrt(n) * 1.2 , result_dict.get(n-1, (0.0, [], [], []))[0] * 1.08  if n-1 in result_dict else 0.0 )
     start_time = time.time()
     best_found = None
     if n <= 10:
         lmt = -1
     elif n <= 20 :
-        lmt = n - 8
+        lmt = n - 5
     elif n <= 50:
-        lmt = n - 6
+        lmt = n - 20
     elif n <= 100:
-        lmt = n - 4
+        lmt = n - 15
     else :
-        lmt = n - 2
+        lmt = n - 10
     # For each candidate mid side during binary search, try fallbacks from
     # using result[n-1], result[n-2], ..., result[0] (empty start).
     # 对于每个二分候选 mid，依次尝试基于 result[n-1], result[n-2], ..., result[0] 的回退。
@@ -283,7 +288,7 @@ def generate_submission(max_n=200, outpath='submission.csv'):
     # global result dict: result[k] = (side_k, centers_k, angles_k, placed_polys_k)
     
     result[0] = (0.0, [], [], [])
-
+    
     for n in range(1, max_n + 1):
         print(f"Packing n={n}")
 
@@ -326,4 +331,4 @@ def generate_submission(max_n=200, outpath='submission.csv'):
 
 if __name__ == '__main__':
     # default run for first 200 configurations
-    generate_submission(max_n=200, outpath='CSE_submission.csv')
+    generate_submission(max_n=200, outpath='CSE_submission#004.csv')
