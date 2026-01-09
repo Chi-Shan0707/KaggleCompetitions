@@ -12,7 +12,7 @@ import math
 import random
 import csv
 import time
-
+import numpy as np
 from matplotlib.patches import Polygon
 from shapely.geometry import box
 from shapely.ops import unary_union
@@ -25,9 +25,9 @@ single_tree_size = [1.0, 0.7, 1.0]
 # max_dim , width , height
 # 初始化全局 result 字典，result[0] 表示空状态
 
-base_jitter =  0.15
-jitter_mu = 0.15  # initial mean multiplier (relative to single tree size)
-jitter_sigma = 0.10  # initial std dev
+
+jitter_mu = 0.10  # initial mean multiplier (relative to single tree size)
+jitter_sigma = 0.05  # initial std dev
 
 
 
@@ -37,36 +37,6 @@ result = {}
 def tree_polygon(x, y, angle_deg):
     # ChristmasTree expects Decimal-like strings for coordinates and angle
     return ChristmasTree(center_x=str(Decimal(x)), center_y=str(Decimal(y)), angle=str(Decimal(angle_deg))).polygon
-
-
-def validate_placement(placed_polys):
-    """Return True if no pairwise overlaps found among placed_polys."""
-    if not placed_polys:
-        return True
-    try:
-        tree = STRtree(placed_polys)
-    except Exception:
-        tree = None
-    for i, p in enumerate(placed_polys):
-        try:
-            cands = tree.query(p) if tree is not None else placed_polys
-        except Exception:
-            cands = placed_polys
-        for cand in cands:
-            if isinstance(cand, int):
-                if cand < 0 or cand >= len(placed_polys):
-                    continue
-                q = placed_polys[cand]
-            else:
-                q = cand
-            if q is p:
-                continue
-            try:
-                if p.intersection(q).area > 1e-6:
-                    return False
-            except Exception:
-                continue
-    return True
 
 
 def fits_in_box(poly, side):
@@ -81,27 +51,25 @@ def no_overlap(poly, placed_polys, tree=None):
     If an STRtree `tree` is provided, query it for candidates to avoid full scan.
     """
     # use spatial index if available
+    if not placed_polys:
+        return True
+    
     if tree is not None:
         try:
             candidates = tree.query(poly)
         except Exception:
-            candidates = placed_polys
+            for i in range(len(placed_polys)):
+                candidates.append(i)
+            
         for cand in candidates:
-            # STRtree.query may return geometry objects or integer indices depending on Shapely version.
-            if isinstance(cand, int):
-                if cand < 0 or cand >= len(placed_polys):
-                    continue
-                p = placed_polys[cand]
-            else:
-                p = cand
-            # ensure candidate is a geometry-like object
-            try:
-                intersects = poly.intersects(p)
-            except TypeError:
+            if placed_polys[cand] is poly:
                 continue
+            intersects = poly.intersects(placed_polys[cand])
             if intersects:
-                if poly.intersection(p).area > 1e-6:
+                inter_area = poly.intersection(placed_polys[cand]).area
+                if inter_area > 1e-6:
                     return False
+
         return True
 
     # fallback: brute-force
@@ -112,7 +80,7 @@ def no_overlap(poly, placed_polys, tree=None):
     return True
 
 
-def attempt_pack_cem(n, side, iterations, population, elite_frac=0.10, max_attempts_per_tree=10, prev_result=None):
+def attempt_pack_cem(n, side, iterations, population, elite_frac=0.08, max_attempts_per_tree=10, prev_result=None,deadline=None):
     """
     Attempt to place n trees inside a square of given side.
 
@@ -153,7 +121,7 @@ def attempt_pack_cem(n, side, iterations, population, elite_frac=0.10, max_attem
     global jitter_mu , jitter_sigma
 
     mu_boundary = 0.5    # 选点位置的均值（0~1）
-    sigma_boundary = 0.2 # 选点位置的标准差
+    sigma_boundary = 0.1 # 选点位置的标准差
 
     if prev_result != None :
         if side < result[len(list ( prev_centers ))][0] :
@@ -168,6 +136,8 @@ def attempt_pack_cem(n, side, iterations, population, elite_frac=0.10, max_attem
         # sample a population of jitter multipliers and evaluate each using the
         # original placement core logic (kept intact). 保持原始放置逻辑不变。
         for s_idx in range(population):
+            if deadline is not None and time.time() > deadline:
+                return False, ([], [], [])
             # sample jitter multiplier for this candidate
             jitter_mult = random.gauss(jitter_mu, jitter_sigma)
             if jitter_mult < 0.0:
@@ -182,6 +152,7 @@ def attempt_pack_cem(n, side, iterations, population, elite_frac=0.10, max_attem
             angles = list(prev_angles) if prev_angles else []
             placed_polys = list(prev_placed_polys) if prev_placed_polys else []
             # build spatial index for faster overlap queries
+
             tree = STRtree(placed_polys) if placed_polys else None
 
             placed = len(centers)
@@ -192,9 +163,11 @@ def attempt_pack_cem(n, side, iterations, population, elite_frac=0.10, max_attem
             for i in range(n - len(centers)):
                 placed_ok = False
                 for attempt in range(max_attempts_per_tree):
+                    if deadline is not None and time.time() > deadline:
+                        return False, ([], [], [])
                     # with 80% probability sample near the perimeter of the
                     # union of placed polygons; otherwise sample uniformly.
-                    if placed_polys and random.random() < 0.90:
+                    if placed_polys and random.random() < 0.95:
                         union = unary_union(placed_polys)
                         boundary = union.boundary
                         if boundary.length <= 0:
@@ -243,8 +216,8 @@ def attempt_pack_cem(n, side, iterations, population, elite_frac=0.10, max_attem
             # 奖励同时考虑放置数量和方箱尺寸（越小越好）。
             # normalize side by expected minimal length ~ single_size*sqrt(n)
 
-            if placed ==n :
-               print("log:",n,side)
+           
+               
             # reward = placed trees minus a penalty proportional to approx_scale
             reward = placed - (max_x + max_y ) * 0.1
             population_results.append((reward, placed, centers, angles, placed_polys, jitter_mult, boundary_ratio))
@@ -252,41 +225,7 @@ def attempt_pack_cem(n, side, iterations, population, elite_frac=0.10, max_attem
             # track global best like before
             if placed == n:
                 # final global overlap verification before accepting candidate
-                overlap_found = False
-                final_tree = STRtree(placed_polys) if placed_polys else None
-                for i_p, p in enumerate(placed_polys):
-                    try:
-                        cands = final_tree.query(p) if final_tree is not None else placed_polys
-                    except Exception:
-                        cands = placed_polys
-                    for cand in cands:
-                        # STRtree.query may return indices (int) or geometry objects
-                        if isinstance(cand, int):
-                            if cand < 0 or cand >= len(placed_polys):
-                                continue
-                            q = placed_polys[cand]
-                        else:
-                            q = cand
-                        # skip comparing the polygon to itself
-                        try:
-                            same = (q is p)
-                        except Exception:
-                            same = False
-                        if same:
-                            continue
-                        # ensure q is a geometry-like object before intersection
-                        try:
-                            inter_area = p.intersection(q).area
-                        except Exception:
-                            continue
-                        if inter_area > 1e-6:
-                            overlap_found = True
-                            break
-                    if overlap_found:
-                        break
-                if overlap_found:
-                    # reject this candidate and continue searching
-                    continue
+                print("log:",n,side)
                 return True, (centers, angles, placed_polys)
             # 我们只是证明这个给定的side是可行的，并返回可以一种可行的方案，不需要继续优化
 
@@ -330,13 +269,21 @@ def find_min_side_for_n(n, timeout=30, result_dict=None):
         result_dict = {}
 
     # Start bounds and hyperparams (kept as original heuristics)
-    iterations = 20
+    iterations = 30
     population = 50
-    max_attempts = 10
-
+    max_attempts = 15
+    
     max_dim, w, h = single_tree_size
-    lo = max ( max_dim * math.sqrt(n) * 0.8 , result_dict.get(n-1, (0.0, [], [], []))[0] * 0.98  if n-1 in result_dict else 0.0 )
-    hi = max ( max_dim * math.sqrt(n) * 1.1 , result_dict.get(n-1, (0.0, [], [], []))[0] * 1.05  if n-1 in result_dict else 0.0 )
+    if n <= 15 :
+        iterations = 40
+        population = 60
+        max_attempts = 20
+        lo = max ( max_dim * math.sqrt(n) * 0.6 , result_dict.get(n-1, (0.0, [], [], []))[0] * 0.90  if n-1 in result_dict else 0.0 )
+        hi = max ( max_dim * math.sqrt(n) * 1.05 , result_dict.get(n-1, (0.0, [], [], []))[0] * 1.10  if n-1 in result_dict else 0.0 )
+        timeout = 60 
+    else :
+        lo = max ( max_dim * math.sqrt(n) * 0.85 , result_dict.get(n-1, (0.0, [], [], []))[0] * 0.975  if n-1 in result_dict else 0.0 )
+        hi = max ( max_dim * math.sqrt(n) * 0.99 , result_dict.get(n-1, (0.0, [], [], []))[0] * (1+ 1.5 /n)  if n-1 in result_dict else 0.0 )
     start_time = time.time()
     best_found = None
     if n <= 10:
@@ -371,7 +318,7 @@ def find_min_side_for_n(n, timeout=30, result_dict=None):
             # call attempt_pack_cem with this prev_result; it will reuse the
             # k-tree state and attempt to place the remaining trees.
             # 将 prev_result 传入 attempt_pack_cem，函数会基于 k 棵树的状态尝试放置剩余树。
-            success, res = attempt_pack_cem(n, mid, iterations=iterations, population=population, max_attempts_per_tree=max_attempts, prev_result=prev_result)
+            success, res = attempt_pack_cem(n, mid, iterations=iterations, population=population, max_attempts_per_tree=max_attempts, prev_result=prev_result,deadline=start_time + timeout)
             if success:
                 success_any = True
                 found_result = res
@@ -412,25 +359,11 @@ def generate_submission(max_n=200, outpath='submission.csv'):
                 ry = (i // per_row) * base * 1.5 + base / 2.0
                 centers.append((rx, ry))
                 angles.append(0.0)
-                placed_polys = []
+                placed_polys .append(tree_polygon(rx, ry, 0.0))
             result[n] = (side, centers, angles, placed_polys)
         else:
             side, res = found
             centers, angles, placed_polys = res
-            # validate placement before storing (guard against polluted prev_result)
-            if not validate_placement(placed_polys):
-                print(f"  Warning: found placement for n={n} failed final validation; using grid fallback")
-                centers = []
-                angles = []
-                base = single_tree_size[0]
-                per_row = math.ceil(math.sqrt(n))
-                side = per_row * base * 1.5
-                placed_polys = []
-                for i in range(n):
-                    rx = (i % per_row) * base * 1.5 + base / 2.0
-                    ry = (i // per_row) * base * 1.5 + base / 2.0
-                    centers.append((rx, ry))
-                    angles.append(0.0)
             # store successful packing into global result dict
             result[n] = (side, centers, angles, placed_polys)
 
@@ -448,4 +381,4 @@ def generate_submission(max_n=200, outpath='submission.csv'):
 
 if __name__ == '__main__':
     # default run for first 200 configurations
-    generate_submission(max_n=20, outpath='CSE_submission#005.csv')
+    generate_submission(max_n=200, outpath='CSE_submission#006.csv')
