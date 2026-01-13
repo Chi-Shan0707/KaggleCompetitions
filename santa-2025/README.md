@@ -1,4 +1,4 @@
-# Santa 2025 - Simple CEM RL Packer
+# Santa 2025 - [competition link](www.kaggle.com/competitions/santa-2025/overview/citation)
 
 This repository contains a lightweight CEM-based RL-style packer that uses the exact
 `ChristmasTree` polygon from `Christmastree.py` and `shapely` for all geometry checks.

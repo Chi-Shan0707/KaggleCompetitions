@@ -17,7 +17,7 @@ from scipy.optimize import differential_evolution
 
 
 # Reuse functions from rl_packer.py
-from RL_packer import tree_polygon, single_tree_size, fits_in_box, no_overlap
+from RL_packer import tree_polygon, single_tree_size, fits_in_box, over_lap
 
 # Cache single tree size (global)
 _SINGLE_TREE_CACHE = single_tree_size()
@@ -117,7 +117,7 @@ def optimize_tree_placement(n, side, popsize=5, maxiter=5, prev_result=None):
             break
 
         fits, poly = _cached_tree_check(x, y, a, side)
-        if not fits or not no_overlap(poly, placed_polys):
+        if not fits or not over_lap(poly, placed_polys):
             break
 
         centers.append((x, y))
