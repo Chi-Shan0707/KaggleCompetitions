@@ -29,3 +29,9 @@ Notes:
 - This is a simple, initial solver using a cross-entropy method to sample placements.
 - It strictly uses `shapely` for containment and overlap checks and the polygon from
   `Christmastree.py` as requested.
+### checker
+
+
+```bash
+python3 checker.py CSE_Place_submission#001.csv --plot --saveplots plots_out
+```
