@@ -139,7 +139,7 @@ def place_one_from_prev(n,prev_result,iterations=40, population=40,deadline=None
         centers, angles, placed_polys = list(prev_result[1]), list(prev_result[2]), list(prev_result[3])
 
     tree = STRtree(placed_polys) if placed_polys else None
-
+    time_over = False
     mu_jitter = 0.1  
     sigma_jitter = 0.05 
     mu_boundary = 0.6
@@ -147,11 +147,13 @@ def place_one_from_prev(n,prev_result,iterations=40, population=40,deadline=None
 
     best_place=(0.0,[],[],[])
 
-    population_results = []
-
-
     for it_id in range(iterations):
+        population_results = []
+        if time_over == True:
+            break
         for population_round in range(population):
+            if time_over == True:
+                break
             jitter_mult = random.gauss(mu_jitter, sigma_jitter)
             if jitter_mult < 0.0:
                 jitter_mult = abs(jitter_mult)
@@ -163,9 +165,10 @@ def place_one_from_prev(n,prev_result,iterations=40, population=40,deadline=None
             tree_local = STRtree(placed_polys_local) if placed_polys_local else None
             br=0
 
-            for attempt in range(10):
+            for attempt in range(55):
                 if deadline is not None and time.time() > deadline:
-                    return False, ([], [], [])
+                    time_over = True
+                    break
                 if placed_polys_local and random.random() < 0.95:
                     union = unary_union(placed_polys_local)
                     boundary = union.boundary
@@ -180,8 +183,8 @@ def place_one_from_prev(n,prev_result,iterations=40, population=40,deadline=None
                         y0 = pt.y / float(scale_factor)
                         jitter = single_tree_size[0] * jitter_mult
                         theta = random.random() * 2.0 * math.pi
-                        dx = math.cos(theta) * jitter * random.random()
-                        dy = math.sin(theta) * jitter * random.random()
+                        dx = math.cos(theta) * jitter
+                        dy = math.sin(theta) * jitter
                         x = x0 + dx
                         y = y0 + dy
                 else:
@@ -198,6 +201,17 @@ def place_one_from_prev(n,prev_result,iterations=40, population=40,deadline=None
                     min_side = calculate_min_side(placed_polys_local)
                     population_results.append((min_side, jitter_mult, br, (centers_local, angles_local, placed_polys_local)))
                     break
+                a = random.gauss(angle_center, 90.0) % 360.0
+                poly = tree_polygon(x, y, a)
+                if no_overlap(poly, placed_polys_local, tree=tree_local):
+                    placed_polys_local.append(poly)
+                    centers_local.append((x, y))
+                    angles_local.append(a)
+                    # use the union-bounds-based side calculation (matches checker)
+                    min_side = calculate_min_side(placed_polys_local)
+                    population_results.append((min_side, jitter_mult, br, (centers_local, angles_local, placed_polys_local)))
+                    break
+                
             ##end of attempts
         if not population_results:
             # nothing found this iteration
@@ -205,14 +219,14 @@ def place_one_from_prev(n,prev_result,iterations=40, population=40,deadline=None
 
         # sort ascending by side (smaller is better)
         population_results.sort(key=lambda x: x[0])
-        k = max(len(population_results) // 10, 5)
+        k = max(len(population_results) // 4, 10)
         k = min(k, len(population_results))
         elites = population_results[:k]
         elite_jitters = [e[1] for e in elites]
 
         
         try:
-            mu_jitter = statistics.mean(elite_jitters) * 0.7 + mu_jitter * 0.3
+            mu_jitter = statistics.mean(elite_jitters) * 0.8 + mu_jitter * 0.2
         except Exception:
             mu_jitter = mu_jitter
         try:
@@ -222,9 +236,10 @@ def place_one_from_prev(n,prev_result,iterations=40, population=40,deadline=None
 
         elite_boundaries = [e[2] for e in elites]
         try:
-            mu_boundary = statistics.mean(elite_boundaries) * 0.6 + mu_boundary * 0.4
+            mu_boundary = statistics.mean(elite_boundaries) * 0.8 + mu_boundary * 0.2
         except Exception:
             mu_boundary = mu_boundary
+
         try:
             sigma_boundary = statistics.stdev(elite_boundaries) * 0.6 + sigma_boundary * 0.4
         except Exception:
@@ -232,11 +247,13 @@ def place_one_from_prev(n,prev_result,iterations=40, population=40,deadline=None
 
         if best_place[0] ==0.0 or best_place[0] > population_results[0][0]:
             best_place = population_results[0]
+
+
     if best_place[0] > 0.0:
         return True, best_place
     return False, (None,[], [], [])
 
-def generate_submission(max_n=200, outpath='#CSE_Place#001.csv', top_k=5):
+def generate_submission(max_n=200, outpath='#CSE_Place#001.csv', top_k=10):
     # Incremental top-k placement pipeline
     
     candidates_num=0
@@ -245,14 +262,13 @@ def generate_submission(max_n=200, outpath='#CSE_Place#001.csv', top_k=5):
         print(f"Packing n={n}")
         feasible_list = []
         max_dim = single_tree_size[0]
-        DDL = time.time() + 60  # 5 minutes per n
-        for _ in range(100):
+        DDL = time.time() + 200  # 5 minutes per n
+        for _ in range(123):
             if n == 1:
                 prev_id = 0
             else:
-                prev_id = choose_pref_front(candidates_num, alpha=0.7)
-
-            place_res = place_one_from_prev(n, candidates[prev_id], iterations=50, population=50,deadline=DDL)
+                prev_id = choose_pref_front(candidates_num, alpha=0.40)
+            place_res = place_one_from_prev(n, candidates[prev_id], iterations=80, population=60,deadline=DDL)
             if place_res[0] == True:
                 feasible_side,_j,_b,(feasible_centers,feasible_angles,feasible_polys)=place_res[1]
                 feasible_list.append((feasible_side,feasible_centers, feasible_angles, feasible_polys))
@@ -284,4 +300,4 @@ def generate_submission(max_n=200, outpath='#CSE_Place#001.csv', top_k=5):
 
 if __name__ == '__main__':
     # default run for first 200 configurations
-    generate_submission(max_n=200, outpath='CSE_Place_submission#001.csv')
+    generate_submission(max_n=200, outpath='CSE_Place_submission#002.csv')
