@@ -47,8 +47,8 @@ def build_pipeline(seed: int = 2026):
     - seed: 传给 feature_engineering 和内部填充函数以保证可复现
     """
     # 列定义（feature_engineering 生成这些列）
-    categorical_cols = ['HomePlanet', 'Destination', 'Deck', 'Side']
-    numerical_cols = ['Age', 'RoomService', 'FoodCourt', 'ShoppingMall', 'Spa', 'VRDeck', 'TotalExpense', 'GroupSize', 'Num']
+    categorical_cols = ['HomePlanet', 'Destination', 'Deck', 'Side','CryoSleep', 'VIP','Num']
+    numerical_cols = ['Age', 'RoomService', 'FoodCourt', 'ShoppingMall', 'Spa', 'VRDeck', 'TotalExpense', 'GroupSize']
 
     # 数值特征预处理：标准化
     numerical_transformer = Pipeline(steps=[

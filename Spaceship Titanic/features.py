@@ -62,35 +62,68 @@ def feature_engineering(df: pd.DataFrame, seed: int = 42) -> pd.DataFrame:
     df['GroupSize'] = df.groupby('Group')['Group'].transform('count')
     df.drop(['PassengerId'], axis=1, inplace=True)
 
-    # 分类填充
+    # HomePlanet
     fill_categorical_by_distribution(df, 'HomePlanet', candidates=['Unknown'], seed=seed)
 
     # CryoSleep 缺失根据花费判断
     for row in df.itertuples(index=True, name='Row'):
         if pd.isna(row.CryoSleep) or row.CryoSleep == 'Unknown':
             spend = 0
+            flag = 1
             for col in ['RoomService', 'FoodCourt', 'ShoppingMall', 'Spa', 'VRDeck']:
                 val = getattr(row, col)
                 if not (pd.isna(val) or val == 'Unknown'):
                     num = pd.to_numeric(val, errors='coerce')
                     spend += 0 if pd.isna(num) else num
-            df.at[row.Index, 'CryoSleep'] = False if spend > 0 else True
+                else :
+                    flag =0
+            if flag==1 :
+                df.at[row.Index, 'CryoSleep'] = False if spend > 0 else True
+    fill_categorical_by_distribution(df, 'CryoSleep', candidates=['Unknown'], seed=seed)
 
+
+    # Cabin
     fill_categorical_by_distribution(df, 'Deck', candidates=['Unknown'], seed=seed)
     fill_categorical_by_distribution(df, 'Num', candidates=['Unknown'], seed=seed)
-    df.drop('Cabin', axis=1, inplace=True)
     fill_categorical_by_distribution(df, 'Side', candidates=['Unknown'], seed=seed)
+    df.drop('Cabin', axis=1, inplace=True)
 
+    # Destination
     fill_categorical_by_distribution(df, 'Destination', candidates=['Unknown'], seed=seed)
+
+    # Age
     fill_numerical_by_median(df, 'Age', candidates=['Unknown'], seed=seed)
+
+    # VIP 缺失根据花费判断
+    for row in df.itertuples(index=True, name='Row'):
+        if pd.isna(row.VIP) or row.VIP == 'Unknown':
+            rich = 0
+            flag = 1
+            for col in ['RoomService', 'FoodCourt', 'ShoppingMall', 'Spa', 'VRDeck']:
+                val = getattr(row, col)
+                if not (pd.isna(val) or val == 'Unknown'):
+                    num = pd.to_numeric(val, errors='coerce')
+                    if num >= df[col].median():
+                        rich += 3
+                    else :
+                        rich -= 2
+                else :
+                    flag =0
+            if flag== 1 :
+                df.at[row.Index, 'VIP'] = False if rich >= 0 else True
     fill_categorical_by_distribution(df, 'VIP', candidates=['Unknown'], seed=seed)
 
-    # 花费
+    # Expense
     for col in ['RoomService', 'FoodCourt', 'ShoppingMall', 'Spa', 'VRDeck']:
         fill_numerical_by_median(df, col, candidates=['Unknown'], seed=seed)
     expense_cols = ['RoomService', 'FoodCourt', 'ShoppingMall', 'Spa', 'VRDeck']
     df['TotalExpense'] = df[expense_cols].sum(axis=1)
 
+
+    # VIP
+    fill_categorical_by_distribution(df, 'VIP', candidates=['Unknown'], seed=seed)
+
+    # Name
     df.drop(['Name'], axis=1, inplace=True)
 
     # 仅在存在 NaN 时打印
