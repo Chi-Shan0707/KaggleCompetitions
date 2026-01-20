@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from pathlib import Path
-
+import features
 import joblib
 from sklearn.pipeline import Pipeline
 
@@ -22,23 +22,9 @@ def load_data(path: str):
 
 
 
-"""
-df = df.copy() 的作用
-`df = df.copy()` 的作用是创建一个 DataFrame 的副本（拷贝），并将变量 `df` 重新指向这个新对象。这样做的好处是**避免原地修改原始数据**，即使前后变量名都是 `df`。
-
-为什么前后变量名一样但能避免原地修改？
-- **变量名是引用**：在 Python 中，`df` 只是一个指向 DataFrame 对象的引用（类似指针）。`df = df.copy()` 先调用 `copy()` 创建一个全新的 DataFrame 对象（内存中独立的新副本），然后让 `df` 指向这个新对象。
-- **前后对比**：
-  - 执行前：`df` 指向原始 DataFrame。
-  - 执行后：`df` 指向新拷贝的 DataFrame（原始对象不变，如果没有其他引用，会被垃圾回收）。
-- **如果不拷贝**：直接修改 `df`（如 `df['new_col'] = ...`），会改变原始对象，导致数据污染。
-- **拷贝类型**：`copy()` 默认是深拷贝（deep copy），确保数据完全独立；如果用 `copy(deep=False)`，则是浅拷贝（只拷贝结构，不拷贝数据）。
-
-这样可以安全地处理数据，避免意外修改源数据。
-"""
 
 
-def predict(model_path: str = 'random_forest_model.pkl', test_path: str | None = None, out_path: str = 'submission.csv'):
+def predict(model_path: str = 'random_forest_model.pkl', test_path: str | None = None, out_path="./Spaceship Titanic/newsubmission.csv"):
     """对测试集进行预测并保存提交文件。
 
     参数：
@@ -50,6 +36,10 @@ def predict(model_path: str = 'random_forest_model.pkl', test_path: str | None =
     # 默认测试集路径
     if test_path is None:
         test_path = "./Spaceship Titanic/spaceship-titanic/test.csv"
+
+    # 默认输出路径（相对于脚本目录）
+    if out_path is None:
+        out_path = 'submission#002.csv'
 
     # 加载测试数据
     test = load_data(test_path)
@@ -77,9 +67,19 @@ def predict(model_path: str = 'random_forest_model.pkl', test_path: str | None =
     preds_bool = pd.Series(preds).astype(bool)
 
     submission = pd.DataFrame({'PassengerId': ids, 'Transported': preds_bool})
-    submission.to_csv(out_path, index=False)
-    print(f"Saved submission to {out_path}")
+
+    # 处理输出路径（相对于脚本目录如果相对路径）
+    out_file = Path(out_path)
+    
+    submission.to_csv(str(out_file), index=False)
+    print(f"Saved submission to {out_file}")
     return submission
 
 if __name__ == "__main__":
-    predict()
+    import argparse
+    parser = argparse.ArgumentParser(description='Load trained pipeline and predict on test set')
+    parser.add_argument('--model', type=str, default='random_forest_model.pkl', help='Path to trained model (joblib)')
+    parser.add_argument('--test', type=str, default=None, help='Path to test CSV file')
+    parser.add_argument('--out', type=str, default='submission#002.csv', help='Output submission CSV path (relative to script directory if not absolute)')
+    args = parser.parse_args()
+    predict(model_path=args.model, test_path=args.test, out_path=args.out)
