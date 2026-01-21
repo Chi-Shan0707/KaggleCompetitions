@@ -99,7 +99,7 @@ def train(seed: int = 42):
     y = df['Transported']
     
     # 划分训练和测试集（可控随机种子）
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=seed)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=seed)
     
     # 构建管道（传入 seed）
     pipeline = build_pipeline(seed=seed)
