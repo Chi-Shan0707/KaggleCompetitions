@@ -74,9 +74,9 @@ The dataset has class imbalance:
 
 **Solution**: Weighted CrossEntropyLoss
 ```
-Weight_0 = 1 / 0.56 ≈ 0.867
-Weight_1 = 1 / 0.44 ≈ 1.133
-Loss = 0.867 * L_0 + 1.133 * L_1
+Weight_0 = 1 / 0.56 ≈ 1.7857
+Weight_1 = 1 / 0.44 ≈ 2.2727
+Loss = 1.7857 * L_0 + 2.2727 * L_1
 ```
 This upweights minority class (disaster) losses, preventing the model from just predicting "non-disaster" for everything.
 

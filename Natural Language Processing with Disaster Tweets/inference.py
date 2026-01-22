@@ -11,7 +11,7 @@ This module provides utilities for:
 import numpy as np
 import torch
 import torch.nn as nn
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from datasets import Dataset
 from transformers import BertForSequenceClassification
 from config import Config
@@ -169,7 +169,15 @@ class DisasterTweetsInference:
         
         sample_data = test_dataset.select(sample_indices)
         predictions = self.trainer.predict(sample_data)
-        pred_labels = np.argmax(predictions.predictions, axis=1)
+        # Trainer.predict() may return:
+        #  - an EvalPrediction-like object with a .predictions (logits) field,
+        #  - or a numpy array of predicted labels (our ModelTrainer.predict).
+        if hasattr(predictions, 'predictions'):
+            logits = predictions.predictions
+            pred_labels = np.argmax(logits, axis=1)
+        else:
+            # Assume predictions is an array of class labels
+            pred_labels = np.asarray(predictions)
         
         if 'labels' in sample_data.column_names:
             true_labels = sample_data['labels']

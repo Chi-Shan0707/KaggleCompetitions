@@ -114,3 +114,10 @@ ehthumbs.db
 *.orig
 *.bak
 
+# Generated outputs and artifacts
+outputs/
+# 常见大型模型/权重后缀（按需启用）
+*.ckpt
+*.pt
+*.pth
+*.h5

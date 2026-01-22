@@ -1,9 +1,9 @@
 """
-Data preprocessing module for Disaster Tweets Classification.
-Handles text cleaning, tokenization, and dataset preparation.
+Data preprocessing module with COMPREHENSIVE VALIDATION (Patterns P004 & P005).
 
-This module provides utilities for transforming raw tweet text into
-BERT-compatible token sequences with comprehensive validation.
+Pattern P004: Validates CSV data completeness
+Pattern P005: Handles empty sequences after cleaning with fallback
+Pattern Prevention: Every function includes boundary & null checks
 """
 
 import re
@@ -17,69 +17,50 @@ from config import Config
 
 class DataPreprocessor:
     """
-    Handles text cleaning, tokenization, and dataset preparation.
+    Production-ready data preprocessor with DEFENSIVE PROGRAMMING.
     
-    This class provides methods for:
-    - Cleaning raw text (removing URLs, mentions, normalizing whitespace)
-    - Validating text quality (minimum length checks)
-    - Tokenizing text using BERT tokenizer
-    - Preparing HuggingFace datasets with validation checks
-    
-    Attributes:
-        config: Config instance with hyperparameters
-        tokenizer: BertTokenizer instance for tokenization
-        debug: Whether to print debug information
+    Patterns prevented:
+    - P004: Missing/corrupted data detection
+    - P005: Empty sequence handling with fallback
     """
     
     def __init__(self, config: Config):
-        """
-        Initialize preprocessor with tokenizer and configuration.
-        
-        Args:
-            config: Config class instance with hyperparameters
-        """
+        """Initialize with validation."""
         self.config = config
         self.tokenizer = BertTokenizer.from_pretrained(config.MODEL_NAME)
         self.debug = config.DEBUG_ENABLED
         
     def clean_text(self, text: str) -> str:
         """
-        Remove noise from text while preserving semantic content.
-        
-        Processing steps:
-        1. Handle NaN/missing values by returning empty string
-        2. Remove URLs (http://, https://, www.)
-        3. Remove @mentions and hashtag symbols (keep hashtag content)
-        4. Normalize whitespace (collapse multiple spaces, trim edges)
-        5. Convert to lowercase if configured
-        
-        Args:
-            text: Raw text string (may contain URLs, mentions, etc.)
-            
-        Returns:
-            Cleaned text string ready for tokenization
-            
-        Example:
-            >>> preprocessor.clean_text("Check out http://example.com #disaster @user")
-            'check out disaster'
+        Clean text with P005 defense: handles None/NaN → fallback string.
         """
-        # Handle missing values
-        if pd.isna(text):
-            return ""
+        # P005: Handle None/NaN gracefully
+        if text is None or pd.isna(text):
+            if self.debug:
+                print(f"[DEBUG] Encountered NaN value, returning fallback")
+            return "[EMPTY]"  # Fallback to avoid empty sequences
         
-        text = str(text)
+        text = str(text).strip()
+        
+        # P005: Check for already-empty input
+        if not text or len(text) < 2:
+            return "[EMPTY]"
         
         # Remove URLs
         if self.config.REMOVE_URLS:
-            text = re.sub(r'http\S+|www.\S+', '', text)
+            text = re.sub(r'http\S+|www\.\S+|ftp\S+', '', text)
         
-        # Remove @mentions and hashtag symbols (keep hashtag content)
+        # Remove @mentions and hashtag symbols
         if self.config.REMOVE_MENTIONS:
             text = re.sub(r'@\w+', '', text)
             text = re.sub(r'#', '', text)
         
         # Normalize whitespace
         text = re.sub(r'\s+', ' ', text).strip()
+        
+        # P005: Check if cleaning left us with empty string
+        if not text:
+            return "[EMPTY]"
         
         # Lowercase
         if self.config.LOWERCASE:
@@ -89,39 +70,14 @@ class DataPreprocessor:
     
     def validate_text(self, text: str) -> bool:
         """
-        Check if text meets minimum quality requirements.
-        
-        Validation criteria:
-        - Minimum word count (after tokenization by whitespace)
-        
-        Args:
-            text: Cleaned text string
-            
-        Returns:
-            True if text passes validation, False otherwise
+        Validate text meets minimum quality.
+        Pattern P005: Explicit check for [EMPTY] fallback marker
         """
-        return len(text.split()) >= self.config.MIN_TEXT_LENGTH
-    
-    def tokenize_batch(self, texts: List[str]) -> Dict:
-        """
-        Tokenize a batch of texts using BERT tokenizer.
+        if text == "[EMPTY]" or not text:
+            return False
         
-        Args:
-            texts: List of text strings
-            
-        Returns:
-            Dictionary with keys:
-            - 'input_ids': Token ID sequences
-            - 'attention_mask': Attention mask (1 for real tokens, 0 for padding)
-            - 'token_type_ids': Segment IDs (0 for single sequence)
-        """
-        return self.tokenizer(
-            texts,
-            max_length=self.config.MAX_LENGTH,
-            padding='max_length',
-            truncation=True,
-            return_tensors='pt'
-        )
+        word_count = len(text.split())
+        return word_count >= self.config.MIN_TEXT_LENGTH
     
     def prepare_dataset(
         self,
@@ -129,100 +85,126 @@ class DataPreprocessor:
         text_col: str = 'text',
         label_col: str = 'target',
         split_type: str = 'train'
-    ) -> Tuple[Dataset, Optional[Dict]]:
+    ) -> Tuple[Dataset, Dict]:
         """
-        Prepare dataset for training/inference with comprehensive validation.
+        Prepare dataset with COMPREHENSIVE DATA VALIDATION (Pattern P004).
         
-        Processing pipeline:
-        1. Check for missing values in text/label columns
-        2. Drop rows with missing text
-        3. Clean text using clean_text() method
-        4. Validate text length
-        5. Tokenize using BERT tokenizer
-        6. Create HuggingFace Dataset object
-        7. Report statistics (class distribution, token lengths)
-        
-        Args:
-            df: Input DataFrame with raw text and optional labels
-            text_col: Name of column containing tweet text
-            label_col: Name of column containing labels (optional)
-            split_type: Type of split ('train', 'validation', or 'inference')
-            
-        Returns:
-            Tuple of (HuggingFace Dataset object, statistics dictionary)
-            
-        Raises:
-            ValueError: If no valid samples remain after cleaning
+        P004 Prevention:
+        - Validate required columns exist
+        - Check for missing values explicitly
+        - Verify data types before processing
+        - Report statistics for audit trail
         """
-        # Debug: Check for missing values
-        if self.debug:
-            print(f"[DEBUG] Original shape: {df.shape}")
-            print(f"[DEBUG] Missing values in {text_col}: {df[text_col].isna().sum()}")
-            if label_col in df.columns:
-                print(f"[DEBUG] Missing values in {label_col}: {df[label_col].isna().sum()}")
+        # ===== STEP 1: VALIDATE INPUT DataFrame (P004) =====
+        if df is None or df.empty:
+            raise ValueError(f"[ERROR] Input DataFrame is empty or None (split_type={split_type})")
         
-        # Create working copy
+        if text_col not in df.columns:
+            raise ValueError(f"[ERROR] Column '{text_col}' not found. Available: {df.columns.tolist()}")
+        
+        if label_col in df.columns and split_type != 'inference':
+            pass  # Labels expected for train/val
+        elif split_type != 'inference':
+            if self.debug:
+                print(f"[WARNING] No label column '{label_col}' for {split_type} split")
+        
         df = df.copy()
+        initial_count = len(df)
         
-        # Drop rows with missing text
+        # ===== STEP 2: REPORT INITIAL DATA STATE (P004 audit) =====
+        if self.debug:
+            print(f"\n[DATA_AUDIT] {split_type.upper()} SET INITIAL STATE:")
+            print(f"  Shape: {df.shape}")
+            print(f"  Text column null count: {df[text_col].isna().sum()} / {len(df)}")
+            if label_col in df.columns:
+                print(f"  Label column null count: {df[label_col].isna().sum()} / {len(df)}")
+        
+        # ===== STEP 3: DROP ROWS WITH MISSING TEXT (P004) =====
         df = df.dropna(subset=[text_col])
+        dropped_na = initial_count - len(df)
+        if dropped_na > 0 and self.debug:
+            print(f"  Dropped {dropped_na} rows with missing text")
         
-        # Clean text
+        if df.empty:
+            raise ValueError(f"[ERROR] All rows removed due to missing text (split_type={split_type})")
+        
+        # ===== STEP 4: CLEAN TEXT + VALIDATE (P005) =====
         df['cleaned_text'] = df[text_col].apply(self.clean_text)
         
-        # Validate text length
-        df['valid'] = df['cleaned_text'].apply(self.validate_text)
-        invalid_count = (~df['valid']).sum()
-        if invalid_count > 0 and self.debug:
-            print(f"[DEBUG] Removing {invalid_count} rows with too-short text")
-        df = df[df['valid']].drop('valid', axis=1)
+        # Mark valid rows
+        df['is_valid'] = df['cleaned_text'].apply(self.validate_text)
+        invalid_rows = (~df['is_valid']).sum()
         
-        # Debug: Check for NaN values after cleaning
-        if self.debug:
-            nan_count = df['cleaned_text'].isna().sum()
-            if nan_count > 0:
-                print(f"[WARNING] {nan_count} NaN values after cleaning")
-                df = df.dropna(subset=['cleaned_text'])
+        if invalid_rows > 0 and self.debug:
+            print(f"  Marked {invalid_rows} rows as invalid (too short)")
         
-        # Tokenize
-        encodings = self.tokenizer(
-            df['cleaned_text'].tolist(),
-            max_length=self.config.MAX_LENGTH,
-            padding='max_length',
-            truncation=True,
-            return_tensors=None
-        )
+        # Filter out invalid rows
+        df = df[df['is_valid']].drop('is_valid', axis=1)
         
-        # Debug: Check token distribution
+        if df.empty:
+            raise ValueError(f"[ERROR] All rows removed after validation (split_type={split_type})")
+        
+        # ===== STEP 5: TOKENIZE WITH VALIDATION =====
+        try:
+            encodings = self.tokenizer(
+                df['cleaned_text'].tolist(),
+                max_length=self.config.MAX_LENGTH,
+                padding='max_length',
+                truncation=True,
+                return_tensors=None
+            )
+        except Exception as e:
+            raise ValueError(f"[ERROR] Tokenization failed: {str(e)}")
+        
+        # Verify tokenization didn't fail
+        if not encodings or 'input_ids' not in encodings:
+            raise ValueError("[ERROR] Tokenizer returned invalid output")
+        
+        # ===== STEP 6: REPORT TOKEN DISTRIBUTION =====
         if self.debug:
             token_lens = [len(ids) for ids in encodings['input_ids']]
-            print(f"[DEBUG] Token length - Min: {min(token_lens)}, "
-                  f"Max: {max(token_lens)}, Mean: {np.mean(token_lens):.1f}")
+            print(f"  Token lengths - Min: {min(token_lens)}, Max: {max(token_lens)}, Mean: {np.mean(token_lens):.1f}")
         
-        # Prepare dataset dictionary
+        # ===== STEP 7: PREPARE DATASET DICT =====
         dataset_dict = {
             'input_ids': encodings['input_ids'],
             'attention_mask': encodings['attention_mask'],
-            'token_type_ids': encodings['token_type_ids'],
+            'token_type_ids': encodings.get('token_type_ids', [[0]*len(ids) for ids in encodings['input_ids']]),
         }
         
-        # Add labels if available
+        # Add labels if present
         if label_col in df.columns:
-            labels = df[label_col].astype(int).tolist()
-            dataset_dict['labels'] = labels
-            
-            # Debug: Check class distribution
-            if self.debug:
-                class_dist = pd.Series(labels).value_counts().to_dict()
-                print(f"[DEBUG] Class distribution: {class_dist}")
+            try:
+                labels = df[label_col].astype(int).tolist()
+                dataset_dict['labels'] = labels
+                
+                if self.debug:
+                    class_dist = pd.Series(labels).value_counts().sort_index().to_dict()
+                    print(f"  Class distribution: {class_dist}")
+            except Exception as e:
+                if self.debug:
+                    print(f"[WARNING] Could not process labels: {str(e)}")
         
-        # Create HF Dataset
+        # ===== STEP 8: CREATE HF DATASET =====
+        # Preserve original identifiers and indices to allow mapping back to the
+        # original DataFrame ordering (useful for submission generation)
+        if 'id' in df.columns:
+            dataset_dict['id'] = df['id'].tolist()
+
+        # Preserve original DataFrame index values for mapping
+        dataset_dict['orig_index'] = df.index.tolist()
+
         hf_dataset = Dataset.from_dict(dataset_dict)
         
-        # Prepare stats
         stats = {
-            'n_samples': len(hf_dataset),
-            'n_features': len(encodings['input_ids'][0]) if encodings['input_ids'] else 0,
+            'initial_rows': initial_count,
+            'final_rows': len(hf_dataset),
+            'rows_dropped': initial_count - len(hf_dataset),
+            'split_type': split_type,
         }
+        
+        if self.debug:
+            print(f"  Final dataset: {len(hf_dataset)} samples")
+            print(f"[DATA_AUDIT] ✓ COMPLETE\n")
         
         return hf_dataset, stats
