@@ -337,265 +337,127 @@ disaster_tweets/
 3. **Maintainability**: Changes isolated to relevant modules
 4. **Scalability**: Easy to swap BERT for RoBERTa, DistilBERT, etc.
 
+
+# Disaster Tweets Classification — README
+
+这是为“Disaster Tweets Classification”项目准备的简洁说明。该项目使用 BERT 对推文进行二分类（灾害/非灾害），并为部署、调试与复现实验提供了完整的防御式实现与文档。
+
 ---
 
-## Troubleshooting
+## 一、项目概览
 
-### Common Errors & Solutions
+目的：用预训练 BERT（`bert-base-uncased`）微调完成推文灾害分类，包含数据验证、训练、推理和提交文件生成的端到端流水线。
 
-#### 1. `ValueError: --load_best_model_at_end requires the save and eval strategy to match`
+设计原则：Fix the Pattern, Not the Symptom — 针对常见错误模式（P001–P008）进行了根本性修复，保证稳定性与兼容性。
 
-**Cause**: Transformers version mismatch - newer versions (4.50+) dropped `evaluation_strategy` parameter, causing evaluation to default to `NO` while save strategy is `EPOCH`, creating a conflict.
+---
 
-**Solution**: The code now handles this automatically by:
-1. Detecting unsupported parameters via `inspect.signature()`
-2. Removing dependent parameters if their prerequisites are unavailable
-3. Gracefully falling back to compatible configurations
+## 二、文件脉络与模块职责
 
-**Manual Verification**:
+- `config.py` — 中心配置与参数验证（`Config`），包含参数说明、默认值与安全范围（_BOUNDS）。
+- `data_preprocessor.py` — 文本清洗、Tokenize 与 HF `Dataset` 构造；包含数据审计与空序列回退逻辑。
+- `model_trainer.py` — 加载 BERT、训练逻辑（Hugging Face `Trainer`）、类权重与版本兼容性处理。
+- `inference.py` — 单条/批量推理与样本验证工具（`DisasterTweetsInference`）。
+- `main.py` — 主入口：执行 10 步流水线（加载→预处理→拆分→训练→验证→推理→提交）。
+- `requirements.txt` — 推荐的依赖版本（项目更新为 transformers==4.57.6 等）。
+- `ERROR_PATTERNS.md` — 项目识别的 8 个错误模式与预防策略（详细修复方法）。
+- `QUICK_START.md` — 快速启动与常见运行示例。
+- `REBUILD_REPORT.md` — 本次重构与变更记录（作者、日期、主要改动）。
+- `nlp-getting-started/` — 原始 Kaggle 数据文件夹（`train.csv`, `test.csv`, `sample_submission.csv`）。
+- `outputs/` — 训练输出与 checkpoint（推荐加入 `.gitignore` 防止误提交）。
+
+---
+
+## 三、快速开始（本地）
+
+1. 进入项目目录：
 ```bash
-python3 -c "import transformers; print(f'transformers: {transformers.__version__}')"
+cd "Natural Language Processing with Disaster Tweets"
 ```
-
-**If Still Having Issues**: Downgrade to a stable version:
-```bash
-pip install transformers==4.30.0
-```
-
-Or upgrade to latest:
-```bash
-pip install --upgrade transformers
-```
-
----
-
-#### Version Compatibility Matrix
-
-The code supports a wide range of `transformers` versions by auto-detecting capabilities:
-
-| transformers | Status | Notes |
-|---|---|---|
-| 4.30.0 | ✅ Tested | Stable, recommended |
-| 4.40.0 | ✅ Compatible | Latest stable at release |
-| 4.57.6 | ✅ Compatible | Latest version, auto-downgrades non-critical params |
-| < 4.25.0 | ❌ Unsupported | Missing required features |
-
-**How It Works**: The `_get_training_args()` method inspects the installed version's `TrainingArguments` signature and intelligently filters parameters:
-- Supported parameters → included
-- Unsupported parameters → skipped with debug warning
-- Dependent parameters (e.g., `load_best_model_at_end`) → removed if prerequisite unavailable
-
----
-
-#### 2. `NameError: name 'inspect' is not defined`
-
-**Cause**: Missing import statement (old code)
-
-**Solution**: Already fixed in the provided code. If you see this, ensure you're using `model_trainer.py` from this package.
-
----
-
-#### 3. `Connection refused: HTTPSConnection...to proxy 10.255.255.254:7897`
-
-**Cause**: Proxy server not running or unreachable
-
-**Solutions**:
-```bash
-# Option A: Disable proxy (if no firewall)
-unset HTTP_PROXY HTTPS_PROXY
-
-# Option B: Verify proxy is running (on Windows)
-netstat -an | findstr 7897
-
-# Option C: Download models offline
-# On a machine with internet, run:
-from transformers import BertTokenizer, BertForSequenceClassification
-BertTokenizer.from_pretrained('bert-base-uncased')
-BertForSequenceClassification.from_pretrained('bert-base-uncased')
-# Then share ~/.cache/huggingface/transformers to offline machine
-```
-
----
-
-#### 4. `CUDA out of memory: tried to allocate 2.00 GiB`
-
-**Cause**: GPU too small for batch size
-
-**Solution**: Reduce batch size in `config.py`:
-```python
-class Config:
-    BATCH_SIZE = 16  # Reduced from 32
-```
-
----
-
-#### 5. `ModuleNotFoundError: No module named 'transformers'`
-
-**Cause**: Dependencies not installed
-
-**Solution**:
+2. 推荐在虚拟环境中安装依赖：
 ```bash
 pip install -r requirements.txt
-# Or manually:
-pip install transformers torch datasets scikit-learn pandas
 ```
-
----
-
-#### 6. `FileNotFoundError: nlp-getting-started/train.csv`
-
-**Cause**: Dataset not in correct location
-
-**Solution**:
+3. 运行端到端流水线：
 ```bash
-# Kaggle Notebook: Add dataset in UI
-# Local machine: Download from Kaggle manually
-# https://www.kaggle.com/competitions/nlp-getting-started/data
-
-# Ensure structure:
-Natural\ Language\ Processing\ with\ Disaster\ Tweets/
-├── nlp-getting-started/
-│   ├── train.csv
-│   └── test.csv
-├── main.py
-└── ...
+python3 main.py
 ```
+
+运行完成后，若一切正常，会在项目根目录生成 `disaster_tweets_submission.csv`（用于提交到 Kaggle）。
 
 ---
 
-### Debug Mode
+## 四、主要运行说明（流水线步骤）
 
-Enable detailed logging:
+`main.py` 会依次执行：
+1. 配置验证（`Config.validate()`）
+2. 加载 CSV（`nlp-getting-started/train.csv` 与 `test.csv`）
+3. 数据清洗与 tokenization（`DataPreprocessor.prepare_dataset()`）
+4. 划分训练/验证集
+5. 计算类权重（处理类别不平衡）
+6. 模型训练（`ModelTrainer.train()`）
+7. 样本验证（`DisasterTweetsInference.validate_sample_predictions()`）
+8. 对测试集预测并映射回原始索引（支持 `orig_index`）
+9. 生成并保存提交文件 `disaster_tweets_submission.csv`
+10. 打印汇总与调试信息
 
+若需要调试更多信息，请在 `config.py` 中启用 `DEBUG_ENABLED = True`。
+
+---
+
+## 五、依赖与环境建议
+
+建议使用如下依赖（见 `requirements.txt`）：
+```
+transformers==4.57.6
+torch==2.9.1
+datasets==4.48.0
+scikit-learn==1.5.1
+pandas==2.2.0
+numpy==1.26.4
+```
+
+环境建议：有 GPU（如 8GB+）能显著加速训练；若无 GPU，CPU 也可运行但会慢得多。
+
+---
+
+## 六、注意事项与常见问题
+
+- outputs/ 文件夹通常包含模型 checkpoint 与中间产物，建议将其加入 `.gitignore`，避免提交大文件。示例：
+    ```gitignore
+    outputs/
+    *.pt
+    *.ckpt
+    ```
+- 如果 `main.py` 打印 `Some weights ... were not initialized`：表示分类头是随机初始化的，应该训练模型以获得有效预测。
+- 如遇 `AttributeError: 'numpy.ndarray' object has no attribute 'predictions'`：表示预测返回类型为 numpy array，代码已在 `inference.py` 中兼容两种返回格式；若仍出错请确保使用的是当前仓库版本。
+- 提交文件长度不匹配：代码会尝试使用 `orig_index` 字段将预测映射回原始 `test.csv` 索引；确保 `nlp-getting-started/test.csv` 中 `id` 列完整且未被手动重新索引。
+
+调试建议：遇到问题先查看 `ERROR_PATTERNS.md` 中对应模式的修复策略，常见问题都有对应的根本修复方法。
+
+---
+
+## 七、如何修改与调参
+
+- 常见修改点：`config.py` 中的 `BATCH_SIZE`, `LEARNING_RATE`, `NUM_EPOCHS`, `MAX_LENGTH`。
+- 修改后必须通过 `Config.validate()`（`main.py` 启动时会自动调用）。
+- 如果想保存训练好的模型，请在 `ModelTrainer.train()` 中调整 `output_dir` 并将 checkpoint 上传到外部存储（S3、GDrive、DVC）。
+
+示例：将 batch size 降到 8（节省显存）
 ```python
-# In config.py
-class Config:
-    DEBUG_ENABLED = True  # Prints step-by-step diagnostics
-```
-
-Output includes:
-- Data shape and missing value counts
-- Token length statistics
-- Class distribution
-- GPU memory availability
-- Ignored TrainingArguments parameters
-
----
-
-### Performance Optimization Tips
-
-1. **GPU**: Use NVIDIA GPU (2x-10x speedup)
-   ```python
-   # In config.py, this is automatic:
-   fp16=torch.cuda.is_available()  # Mixed precision on GPU
-   ```
-
-2. **Batch Size**: Larger = faster but needs more memory
-   ```
-   8GB GPU   → batch_size = 32 (safe)
-   6GB GPU   → batch_size = 16
-   4GB GPU   → batch_size = 8
-   ```
-
-3. **Epochs**: 1-2 for fast prototyping, 3-5 for competition
-   ```python
-   NUM_EPOCHS = 1  # Quick test (30 mins)
-   NUM_EPOCHS = 3  # Balanced (2 hours)
-   NUM_EPOCHS = 5  # Best accuracy (4 hours)
-   ```
-
----
-
-## Performance
-
-### Benchmark Results
-
-| Environment | Hardware | Batch Size | Epochs | Time | F1 Score |
-|---|---|---|---|---|---|
-| Kaggle Notebook | Tesla T4 GPU | 32 | 3 | 12 min | 0.834 |
-| Local RTX 3070 | RTX 3070 GPU | 64 | 3 | 4 min | 0.840 |
-| Google Colab | Tesla K80 GPU | 16 | 3 | 25 min | 0.831 |
-| CPU (Intel i7) | CPU | 8 | 1 | 90 min | 0.815 |
-
-### Expected Metrics
-
-After training on provided dataset:
-- **Validation F1**: 0.82-0.84
-- **Validation Accuracy**: 0.81-0.83
-- **Precision**: 0.80-0.85
-- **Recall**: 0.80-0.86
-- **Kaggle LB**: Top 10% (~0.84 F1)
-
----
-
-## Advanced Usage
-
-### Fine-tune on Different Model
-
-```python
-# In config.py
-class Config:
-    MODEL_NAME = 'roberta-base'  # RoBERTa (better performance)
-    # or 'distilbert-base-uncased'  # DistilBERT (faster)
-    # or 'albert-base-v2'  # ALBERT (smaller)
-
-# Run:
-python main.py
-```
-
-### Use Trained Model for Inference
-
-```python
-from config import Config
-from data_preprocessor import DataPreprocessor
-from model_trainer import ModelTrainer
-from inference import DisasterTweetsInference
-import torch
-
-# Load components
-config = Config()
-preprocessor = DataPreprocessor(config)
-trainer = ModelTrainer(config)
-
-# Load best checkpoint (after training)
-best_model = torch.load('outputs/checkpoint-3/pytorch_model.bin')
-
-# Create inference pipeline
-inference = DisasterTweetsInference(config, best_model, preprocessor, trainer)
-
-# Predict
-result = inference.predict_single_tweet("earthquake alert downtown")
-print(f"Prediction: {result['prediction']}, Confidence: {result['confidence']:.4f}")
+# config.py
+Config.BATCH_SIZE = 8
 ```
 
 ---
 
-## References
+## 八、维护与贡献
 
-- [BERT Paper](https://arxiv.org/abs/1810.04805): "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding"
-- [Hugging Face Transformers](https://huggingface.co/docs/transformers)
-- [Kaggle Competition](https://www.kaggle.com/competitions/nlp-getting-started)
-- [PyTorch Documentation](https://pytorch.org/docs)
+- 若你修复了新的错误模式，请在 `ERROR_PATTERNS.md` 中添加相应条目，并在 `REBUILD_REPORT.md` 更新变更记录。
+- 提交 PR 时，请保证 `Config.validate()` 通过并在 `QUICK_START.md` 或 `README.md` 里记录重要变更。
 
 ---
 
-## License
 
-MIT License - Feel free to use for research and competitions.
-
-## Author
-
-GitHub Copilot - Disaster Tweets Classification Pipeline
-
----
-
-## Changelog
-
-### v1.0 (2026-01-21)
-- ✅ Modular refactoring (5 files)
-- ✅ Version-aware TrainingArguments handling
-- ✅ Comprehensive README with examples
-- ✅ GPU/CPU optimization
-- ✅ Class weight balancing
-- ✅ Caching status reporting
+最后更新：2026-01-22
 

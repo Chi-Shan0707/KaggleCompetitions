@@ -184,9 +184,9 @@ class Config:
     NUM_LABELS: int = 2
     
     # ========== Training Hyperparameters (transformers 4.57.6 compatible) ==========
-    BATCH_SIZE: int = 16
-    LEARNING_RATE: float = 1e-5
-    NUM_EPOCHS: int = 4
+    BATCH_SIZE: int = 32#16 8~64
+    LEARNING_RATE: float = 5e-6 # 1e-6~1e-4
+    NUM_EPOCHS: int = 6 #4 1~10
     WARMUP_STEPS: int = 500
     WEIGHT_DECAY: float = 0.01
 
@@ -195,7 +195,7 @@ class Config:
     TRAIN_SIZE: float = 0.8
     VALIDATION_SIZE: float = 0.1
     TEST_SIZE: float = 0.1
-    RANDOM_STATE: int = 42
+    RANDOM_STATE: int = 123
     
     # ========== Text Preprocessing (Pattern P005: Empty Sequence Prevention) ==========
     MIN_TEXT_LENGTH: int = 3  # Minimum words after cleaning (P005 defense)
