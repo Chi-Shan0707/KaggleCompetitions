@@ -158,11 +158,11 @@ class ModelTrainer:
             'weight_decay': self.config.WEIGHT_DECAY,
             'logging_steps': 100,
             'save_strategy': 'epoch',
-            'evaluation_strategy': 'epoch',
+            'eval_strategy': 'epoch',
             'load_best_model_at_end': True,
             'metric_for_best_model': 'f1',
             'greater_is_better': True,
-            'save_total_limit': 2,
+            'save_total_limit': 4,
             'seed': self.config.RANDOM_STATE,
             'fp16': torch.cuda.is_available()
         }
@@ -172,10 +172,10 @@ class ModelTrainer:
         filtered = {k: v for k, v in ta_kwargs.items() if k in supported}
         ignored = set(ta_kwargs) - set(filtered)
         
-        # Handle dependent parameters
-        if 'evaluation_strategy' not in supported:
-            for param in ['load_best_model_at_end', 'metric_for_best_model', 'greater_is_better']:
-                filtered.pop(param, None)
+        # # Handle dependent parameters
+        # if 'eval_strategy' not in supported:
+        #     for param in ['load_best_model_at_end', 'metric_for_best_model', 'greater_is_better']:
+        #         filtered.pop(param, None)
         
         if self.debug and ignored:
             print(f"[DEBUG] Ignored unsupported parameters (v{transformers.__version__}): {ignored}")

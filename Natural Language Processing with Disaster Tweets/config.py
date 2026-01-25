@@ -180,7 +180,7 @@ class Config:
     
     # ========== Model Configuration ==========
     MODEL_NAME: str = 'bert-base-uncased'
-    MAX_LENGTH: int = 128
+    MAX_LENGTH: int = 256
     NUM_LABELS: int = 2
     
     # ========== Training Hyperparameters (transformers 4.57.6 compatible) ==========
@@ -192,10 +192,10 @@ class Config:
 
     
     # ========== Data Split Configuration ==========
-    TRAIN_SIZE: float = 0.8
+    TRAIN_SIZE: float = 0.85
     VALIDATION_SIZE: float = 0.1
-    TEST_SIZE: float = 0.1
-    RANDOM_STATE: int = 123
+    TEST_SIZE: float = 0.05
+    RANDOM_STATE: int = 20260125
     
     # ========== Text Preprocessing (Pattern P005: Empty Sequence Prevention) ==========
     MIN_TEXT_LENGTH: int = 3  # Minimum words after cleaning (P005 defense)

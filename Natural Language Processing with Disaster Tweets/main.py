@@ -100,6 +100,14 @@ def main():
         # ===== STEP 3: PREPROCESS DATA =====
         print("\n[STEP 3] Preprocessing data...")
         preprocessor = DataPreprocessor(Config)
+
+        # ===== OPTIONAL STEP: COMBINE LOCATION WITH TEXT =====
+
+        # df = self.combine_location_with_text(df, text_col=text_col, location_col='location')
+        # text_col = 'combined_text'  # Update text_col to use combined text
+        train_df = preprocessor.combine_location_with_text(train_df, text_col='text', location_col='location')
+        test_df = preprocessor.combine_location_with_text(test_df, text_col='text', location_col='location')
+        
         
         try:
             train_dataset, train_stats = preprocessor.prepare_dataset(

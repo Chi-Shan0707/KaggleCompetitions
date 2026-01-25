@@ -1,3 +1,132 @@
+## 一、项目概览
+
+目的：用预训练 BERT（`bert-base-uncased`）微调完成推文灾害分类，包含数据验证、训练、推理和提交文件生成的端到端流水线。
+
+设计原则：Fix the Pattern, Not the Symptom — 针对常见错误模式（P001–P008）进行了根本性修复，保证稳定性与兼容性。
+
+---
+
+## 二、文件脉络与模块职责
+
+- `config.py` — 中心配置与参数验证（`Config`），包含参数说明、默认值与安全范围（_BOUNDS）。
+- `data_preprocessor.py` — 文本清洗、Tokenize 与 HF `Dataset` 构造；包含数据审计与空序列回退逻辑。
+- `model_trainer.py` — 加载 BERT、训练逻辑（Hugging Face `Trainer`）、类权重与版本兼容性处理。
+- `inference.py` — 单条/批量推理与样本验证工具（`DisasterTweetsInference`）。
+- `main.py` — 主入口：执行 10 步流水线（加载→预处理→拆分→训练→验证→推理→提交）。
+- `requirements.txt` — 推荐的依赖版本（项目更新为 transformers==4.57.6 等）。
+- `ERROR_PATTERNS.md` — 项目识别的 8 个错误模式与预防策略（详细修复方法）。
+- `QUICK_START.md` — 快速启动与常见运行示例。
+- `REBUILD_REPORT.md` — 本次重构与变更记录（作者、日期、主要改动）。
+- `nlp-getting-started/` — 原始 Kaggle 数据文件夹（`train.csv`, `test.csv`, `sample_submission.csv`）。
+- `outputs/` — 训练输出与 checkpoint（推荐加入 `.gitignore` 防止误提交）。
+
+---
+
+## 三、快速开始（本地）
+
+1. 进入项目目录：
+```bash
+cd "Natural Language Processing with Disaster Tweets"
+```
+2. 推荐在虚拟环境中安装依赖：
+```bash
+pip install -r requirements.txt
+```
+3. 运行端到端流水线：
+```bash
+python3 main.py
+```
+
+运行完成后，若一切正常，会在项目根目录生成 `disaster_tweets_submission.csv`（用于提交到 Kaggle）。
+
+---
+
+## 四、主要运行说明（流水线步骤）
+
+`main.py` 会依次执行：
+1. 配置验证（`Config.validate()`）
+2. 加载 CSV（`nlp-getting-started/train.csv` 与 `test.csv`）
+3. 数据清洗与 tokenization（`DataPreprocessor.prepare_dataset()`）
+4. 划分训练/验证集
+5. 计算类权重（处理类别不平衡）
+6. 模型训练（`ModelTrainer.train()`）
+7. 样本验证（`DisasterTweetsInference.validate_sample_predictions()`）
+8. 对测试集预测并映射回原始索引（支持 `orig_index`）
+9. 生成并保存提交文件 `disaster_tweets_submission.csv`
+10. 打印汇总与调试信息
+
+若需要调试更多信息，请在 `config.py` 中启用 `DEBUG_ENABLED = True`。
+
+---
+
+## 五、依赖与环境建议
+
+建议使用如下依赖（见 `requirements.txt`）：
+```
+transformers==4.57.6
+torch==2.9.1
+datasets==4.48.0
+scikit-learn==1.5.1
+pandas==2.2.0
+numpy==1.26.4
+```
+
+环境建议：有 GPU（如 8GB+）能显著加速训练；若无 GPU，CPU 也可运行但会慢得多。
+
+---
+
+## 六、注意事项与常见问题
+
+- outputs/ 文件夹通常包含模型 checkpoint 与中间产物，建议将其加入 `.gitignore`，避免提交大文件。示例：
+    ```gitignore
+    outputs/
+    *.pt
+    *.ckpt
+    ```
+- 如果 `main.py` 打印 `Some weights ... were not initialized`：表示分类头是随机初始化的，应该训练模型以获得有效预测。
+- 如遇 `AttributeError: 'numpy.ndarray' object has no attribute 'predictions'`：表示预测返回类型为 numpy array，代码已在 `inference.py` 中兼容两种返回格式；若仍出错请确保使用的是当前仓库版本。
+- 提交文件长度不匹配：代码会尝试使用 `orig_index` 字段将预测映射回原始 `test.csv` 索引；确保 `nlp-getting-started/test.csv` 中 `id` 列完整且未被手动重新索引。
+
+调试建议：遇到问题先查看 `ERROR_PATTERNS.md` 中对应模式的修复策略，常见问题都有对应的根本修复方法。
+
+- 验证集（validation）：训练过程中用于调参、选择最佳 checkpoint、做早停（early stopping）和监控过拟合；会在每个 epoch 或固定间隔上多次查看其指标，因此可能“泄露”到模型选择过程。配置中对应 VALIDATION_SIZE（通常 5–20%）。<br>
+  测试集（test）：在模型和超参固定后，做一次性的最终评估，用来估计模型对未见数据的泛化能力。测试集不得用于训练或调参。配置中对应 TEST_SIZE（通常 5–20%）。<br>
+- 这里的loss是训练过程是的步级损失eval_loss是在验证集合上得到的损失,train_loss是在整个训练过程上所有training_steps的平均损失
+```bash                           
+{'loss': 0.3024, 'grad_norm': 6.227672100067139, 'learning_rate': 9.129213483146067e-08, 'epoch': 5.94}                            
+{'eval_loss': 0.4441136419773102, 'eval_model_preparation_time': 0.0014, 'eval_accuracy': 0.810905892700088, 'eval_f1': 0.810917059157213, 'eval_precision': 0.8109294830024124, 'eval_recall': 0.810905892700088, 'eval_runtime': 2.9321, 'eval_samples_per_second': 387.773, 'eval_steps_per_second': 12.278, 'epoch': 6.0}
+{'train_runtime': 870.5079, 'train_samples_per_second': 44.367, 'train_steps_per_second': 1.392, 'train_loss': 0.42777145931823024, 'epoch': 6.0}                                                                                                                     
+100%|██████████████████████████████████████████████████████████████████████████████████████████| 1212/1212 [14:30<00:00,  1.39it/s]
+[DEBUG] Training complete. Final loss: 0.4278
+✓ Training complete
+```
+
+---
+
+## 七、如何修改与调参
+
+- 常见修改点：`config.py` 中的 `BATCH_SIZE`, `LEARNING_RATE`, `NUM_EPOCHS`, `MAX_LENGTH`。
+- 修改后必须通过 `Config.validate()`（`main.py` 启动时会自动调用）。
+- 如果想保存训练好的模型，请在 `ModelTrainer.train()` 中调整 `output_dir` 并将 checkpoint 上传到外部存储（S3、GDrive、DVC）。
+
+示例：将 batch size 降到 8（节省显存）
+```python
+# config.py
+Config.BATCH_SIZE = 8
+```
+
+---
+
+## 八、维护与贡献
+
+- 若你修复了新的错误模式，请在 `ERROR_PATTERNS.md` 中添加相应条目，并在 `REBUILD_REPORT.md` 更新变更记录。
+- 提交 PR 时，请保证 `Config.validate()` 通过并在 `QUICK_START.md` 或 `README.md` 里记录重要变更。
+
+---
+
+
+
+
 # Disaster Tweets Classification with BERT
 
 A production-ready deep learning pipeline for classifying disaster-related tweets using BERT (Bidirectional Encoder Representations from Transformers). Optimized for Kaggle's free GPU tier and handles class imbalance with weighted loss functions.
@@ -344,120 +473,5 @@ disaster_tweets/
 
 ---
 
-## 一、项目概览
 
-目的：用预训练 BERT（`bert-base-uncased`）微调完成推文灾害分类，包含数据验证、训练、推理和提交文件生成的端到端流水线。
-
-设计原则：Fix the Pattern, Not the Symptom — 针对常见错误模式（P001–P008）进行了根本性修复，保证稳定性与兼容性。
-
----
-
-## 二、文件脉络与模块职责
-
-- `config.py` — 中心配置与参数验证（`Config`），包含参数说明、默认值与安全范围（_BOUNDS）。
-- `data_preprocessor.py` — 文本清洗、Tokenize 与 HF `Dataset` 构造；包含数据审计与空序列回退逻辑。
-- `model_trainer.py` — 加载 BERT、训练逻辑（Hugging Face `Trainer`）、类权重与版本兼容性处理。
-- `inference.py` — 单条/批量推理与样本验证工具（`DisasterTweetsInference`）。
-- `main.py` — 主入口：执行 10 步流水线（加载→预处理→拆分→训练→验证→推理→提交）。
-- `requirements.txt` — 推荐的依赖版本（项目更新为 transformers==4.57.6 等）。
-- `ERROR_PATTERNS.md` — 项目识别的 8 个错误模式与预防策略（详细修复方法）。
-- `QUICK_START.md` — 快速启动与常见运行示例。
-- `REBUILD_REPORT.md` — 本次重构与变更记录（作者、日期、主要改动）。
-- `nlp-getting-started/` — 原始 Kaggle 数据文件夹（`train.csv`, `test.csv`, `sample_submission.csv`）。
-- `outputs/` — 训练输出与 checkpoint（推荐加入 `.gitignore` 防止误提交）。
-
----
-
-## 三、快速开始（本地）
-
-1. 进入项目目录：
-```bash
-cd "Natural Language Processing with Disaster Tweets"
-```
-2. 推荐在虚拟环境中安装依赖：
-```bash
-pip install -r requirements.txt
-```
-3. 运行端到端流水线：
-```bash
-python3 main.py
-```
-
-运行完成后，若一切正常，会在项目根目录生成 `disaster_tweets_submission.csv`（用于提交到 Kaggle）。
-
----
-
-## 四、主要运行说明（流水线步骤）
-
-`main.py` 会依次执行：
-1. 配置验证（`Config.validate()`）
-2. 加载 CSV（`nlp-getting-started/train.csv` 与 `test.csv`）
-3. 数据清洗与 tokenization（`DataPreprocessor.prepare_dataset()`）
-4. 划分训练/验证集
-5. 计算类权重（处理类别不平衡）
-6. 模型训练（`ModelTrainer.train()`）
-7. 样本验证（`DisasterTweetsInference.validate_sample_predictions()`）
-8. 对测试集预测并映射回原始索引（支持 `orig_index`）
-9. 生成并保存提交文件 `disaster_tweets_submission.csv`
-10. 打印汇总与调试信息
-
-若需要调试更多信息，请在 `config.py` 中启用 `DEBUG_ENABLED = True`。
-
----
-
-## 五、依赖与环境建议
-
-建议使用如下依赖（见 `requirements.txt`）：
-```
-transformers==4.57.6
-torch==2.9.1
-datasets==4.48.0
-scikit-learn==1.5.1
-pandas==2.2.0
-numpy==1.26.4
-```
-
-环境建议：有 GPU（如 8GB+）能显著加速训练；若无 GPU，CPU 也可运行但会慢得多。
-
----
-
-## 六、注意事项与常见问题
-
-- outputs/ 文件夹通常包含模型 checkpoint 与中间产物，建议将其加入 `.gitignore`，避免提交大文件。示例：
-    ```gitignore
-    outputs/
-    *.pt
-    *.ckpt
-    ```
-- 如果 `main.py` 打印 `Some weights ... were not initialized`：表示分类头是随机初始化的，应该训练模型以获得有效预测。
-- 如遇 `AttributeError: 'numpy.ndarray' object has no attribute 'predictions'`：表示预测返回类型为 numpy array，代码已在 `inference.py` 中兼容两种返回格式；若仍出错请确保使用的是当前仓库版本。
-- 提交文件长度不匹配：代码会尝试使用 `orig_index` 字段将预测映射回原始 `test.csv` 索引；确保 `nlp-getting-started/test.csv` 中 `id` 列完整且未被手动重新索引。
-
-调试建议：遇到问题先查看 `ERROR_PATTERNS.md` 中对应模式的修复策略，常见问题都有对应的根本修复方法。
-
----
-
-## 七、如何修改与调参
-
-- 常见修改点：`config.py` 中的 `BATCH_SIZE`, `LEARNING_RATE`, `NUM_EPOCHS`, `MAX_LENGTH`。
-- 修改后必须通过 `Config.validate()`（`main.py` 启动时会自动调用）。
-- 如果想保存训练好的模型，请在 `ModelTrainer.train()` 中调整 `output_dir` 并将 checkpoint 上传到外部存储（S3、GDrive、DVC）。
-
-示例：将 batch size 降到 8（节省显存）
-```python
-# config.py
-Config.BATCH_SIZE = 8
-```
-
----
-
-## 八、维护与贡献
-
-- 若你修复了新的错误模式，请在 `ERROR_PATTERNS.md` 中添加相应条目，并在 `REBUILD_REPORT.md` 更新变更记录。
-- 提交 PR 时，请保证 `Config.validate()` 通过并在 `QUICK_START.md` 或 `README.md` 里记录重要变更。
-
----
-
-
-最后更新：2026-01-22
 

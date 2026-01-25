@@ -83,6 +83,7 @@ class DisasterTweetsInference:
             - 'error': Error message if prediction failed
         """
         # Clean and validate
+
         cleaned = self.preprocessor.clean_text(text)
         if not self.preprocessor.validate_text(cleaned):
             return {

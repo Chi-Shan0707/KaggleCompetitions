@@ -48,8 +48,10 @@ class DataPreprocessor:
         
         # Remove URLs
         if self.config.REMOVE_URLS:
-            text = re.sub(r'http\S+|www\.\S+|ftp\S+', '', text)
-        
+            text = re.sub(r'https?://t\.co\S+', '', text)
+           # text = re.sub(r'http\S+|www\.\S+|ftp\S+', '', text)
+            text = re.sub(r'(?:http|https|ftp)://([\w.-]+)\S*|www\.([\w.-]+)\S*', lambda x: x.group(1) if x.group(1) else x.group(2), text)
+            # 只保留域名嘿
         # Remove @mentions and hashtag symbols
         if self.config.REMOVE_MENTIONS:
             text = re.sub(r'@\w+', '', text)
@@ -78,11 +80,46 @@ class DataPreprocessor:
         
         word_count = len(text.split())
         return word_count >= self.config.MIN_TEXT_LENGTH
+    def combine_location_with_text(self, df: pd.DataFrame, text_col: str = 'text', location_col: str = 'location') -> pd.DataFrame:
+        """
+        Combine location information with text data.
+        
+        Args:
+            df: Input DataFrame
+            text_col: Name of the text column
+            location_col: Name of the location column
+            
+        Returns:
+            DataFrame with combined text
+        """
+        if location_col not in df.columns:
+            if self.debug:
+                print(f"[DEBUG] Location column '{location_col}' not found. Skipping combination.")
+            return df
+        
+        # Minimal clean: fill missing and strip whitespace
+        loc_ser = df[location_col].fillna('').astype(str).str.strip()
+
+# ser 在这里是 Series 的简写，表示一个 pandas Series。
+# 例如 loc_ser = df['location']... 意味着 loc_ser 是从 DataFrame 抽出的 location 列（一个 pandas Series）。常见替代名有 loc_series，更易读。
+        
+        # Treat common placeholders as empty (optional but safe)
+        # loc_ser = loc_ser.replace({'Location': '', 'Global-NoLocation': ''})
+        # 我们木有这样的占位符
+
+        # Build combined text (location first so截断时优先保留 location)
+        orig_text = df[text_col]
+        combined = loc_ser.apply(lambda x: (x + ' [LOC] ') if x else '') + orig_text.fillna('').astype(str)
+        # If the original text was NaN, restore NaN so downstream dropna still removes these rows
+        combined.loc[orig_text.isna()] = np.nan
+        df['combined_text'] = combined
+        
+        return df
     
     def prepare_dataset(
         self,
         df: pd.DataFrame,
-        text_col: str = 'text',
+        text_col: str = 'combined_text',
         label_col: str = 'target',
         split_type: str = 'train'
     ) -> Tuple[Dataset, Dict]:
