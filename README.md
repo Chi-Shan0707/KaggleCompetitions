@@ -4,12 +4,19 @@
 ```
 Score: 118.952630996065
 
-1984/2910
+
 ```
 
 
 ## Spaceship Titanic
+```
+Score: 0.79869
 
+```
 
 ## Natural Language Processing with Disaster Tweets
+
+```
+Score: 0.83818
+```
 

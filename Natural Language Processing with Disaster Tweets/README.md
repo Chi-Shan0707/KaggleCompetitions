@@ -259,9 +259,10 @@ python main.py
 ### Option 3: Google Colab
 
 ```python
+
 # In Colab cell 1:
-!git clone https://github.com/your-repo/disaster-tweets-bert.git
-%cd disaster-tweets-bert
+!git clone https://github.com/Chi-Shan0707/KaggleCompetitions
+%cd ./Natural\ Language\ Processing\ with\ Disaster\ Tweets/
 !pip install -q transformers torch datasets scikit-learn pandas
 
 # In Colab cell 2:
