@@ -121,3 +121,7 @@ outputs/
 *.pt
 *.pth
 *.h5
+
+
+/I’m Something of a Painter Myself/gan-getting-started/photo_jpg/
+/I’m Something of a Painter Myself/gan-getting-started/monet_jpg/

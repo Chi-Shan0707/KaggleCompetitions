@@ -20,3 +20,7 @@ Score: 0.79869
 Score: 0.83818
 ```
 
+## I’m Something of a Painter Myself
+
+[link](https://www.kaggle.com/competitions/gan-getting-started)
+
