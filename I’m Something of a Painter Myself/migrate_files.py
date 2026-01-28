@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """
 脚本：将文件夹X中的所有文件迁移到目标文件夹。
 支持复制或移动，递归处理子文件夹中的文件。
@@ -70,6 +70,7 @@ if __name__ == "__main__":
     parser.add_argument("source", help="源文件夹路径")
     parser.add_argument("dest", help="目标文件夹路径")
     parser.add_argument("--move", action="store_true", help="移动文件而不是复制")
+    # "store_true"：内置action，表示这是一个布尔开关。如果命令行中出现该标志（如--move），则将对应的属性设为True；否则为False。
     parser.add_argument("--no-recursive", action="store_true", help="不递归处理子文件夹，只迁移根目录文件")
     
     args = parser.parse_args()
