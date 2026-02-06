@@ -2,7 +2,10 @@
 
 ## Santa 2025 - Christmas Tree Packing Challenge
 
-[link](https://www.kaggle.com/competitions/santa-2025/)
+[Github Repo ](https://github.com/Chi-Shan0707/Kaggle-Santa-2025---Christmas-Tree-Packing-Challenge)
+<br>
+
+[Competition Link](https://www.kaggle.com/competitions/santa-2025/)
 ```
 Score: 118.952630996065
 rank: 2319/3397
