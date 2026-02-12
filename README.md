@@ -2,10 +2,10 @@
 
 ## Santa 2025 - Christmas Tree Packing Challenge
 
-[Github Repo ](https://github.com/Chi-Shan0707/Kaggle-Santa-2025---Christmas-Tree-Packing-Challenge)
+[Competition Link](https://www.kaggle.com/competitions/santa-2025/)
 <br>
 
-[Competition Link](https://www.kaggle.com/competitions/santa-2025/)
+[GitHub Repo](https://github.com/Chi-Shan0707/Kaggle-Santa-2025---Christmas-Tree-Packing-Challenge)
 ```
 Score: 118.952630996065
 rank: 2319/3397
@@ -14,24 +14,33 @@ rank: 2319/3397
 
 ## Spaceship Titanic
 
-[link](https://www.kaggle.com/competitions/spaceship-titanic)
+[Competition Link](https://www.kaggle.com/competitions/spaceship-titanic)
+
+[GitHub Repo](https://github.com/Chi-Shan0707/Kaggle-Spaceship-Titanic)
 ```
 Score: 0.79869
 ```
 
 ## Natural Language Processing with Disaster Tweets
 
-[link](https://www.kaggle.com/competitions/nlp-getting-started)
+[Competition Link](https://www.kaggle.com/competitions/nlp-getting-started)
 
+[GitHub Repo](https://github.com/Chi-Shan0707/Kaggle-Natural-Language-Processing-with-Disaster-Tweets)
 ```
 Score: 0.83818
 ```
 
 ## I’m Something of a Painter Myself
 
-[link](https://www.kaggle.com/competitions/gan-getting-started)
+[Competition Link](https://www.kaggle.com/competitions/gan-getting-started)
 
-
+[GitHub Repo](https://github.com/Chi-Shan0707/Kaggle-Im-Something-of-a-Painter-Myself)
 ## UrbanFloodBench: Flood Modelling
 
-[link](https://www.kaggle.com/competitions/urban-flood-modelling)
+[Competition Link](https://www.kaggle.com/competitions/urban-flood-modelling)
+
+[GitHub Repo](https://github.com/Chi-Shan0707/Kaggle-UrbanFloodBench-Flood-Modelling)
+```
+Score: 0.7285
+```
+
